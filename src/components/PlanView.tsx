@@ -64,15 +64,24 @@ export function PlanView() {
     [model, modelKey, planLevel],
   );
 
+  // 敷地形状 (ADR-0011) は最下階の平面 (配置図兼用) に敷地境界線として描く
+  const sitePolys = useMemo(() => {
+    if (!model || !planLevel) return [];
+    const lowest = Object.values(model.levels).sort((a, b) => a.z - b.z)[0]?.name;
+    return planLevel === lowest ? [...model.polygons.values()] : [];
+  }, [model, modelKey, planLevel]);
+
   const extent: Extent | null = useMemo(() => {
     if (rooms.length === 0) return null;
     const rs = rooms.flatMap((s) => s.rects);
-    const minX = Math.min(...rs.map((r) => r.x1));
-    const maxX = Math.max(...rs.map((r) => r.x2));
-    const minY = Math.min(...rs.map((r) => r.y1));
-    const maxY = Math.max(...rs.map((r) => r.y2));
+    const px = sitePolys.flatMap((p) => p.points.map((pt) => pt.x));
+    const py = sitePolys.flatMap((p) => p.points.map((pt) => pt.y));
+    const minX = Math.min(...rs.map((r) => r.x1), ...px);
+    const maxX = Math.max(...rs.map((r) => r.x2), ...px);
+    const minY = Math.min(...rs.map((r) => r.y1), ...py);
+    const maxY = Math.max(...rs.map((r) => r.y2), ...py);
     return { minX, maxX, minY, maxY, W: maxX - minX + M * 2, H: maxY - minY + M * 2 };
-  }, [rooms]);
+  }, [rooms, sitePolys]);
 
   // ズームのリセット (レベル・ファイル切替)
   useEffect(() => setVb(null), [planLevel, fitKey]);
@@ -221,6 +230,23 @@ export function PlanView() {
         </g>,
       );
     }
+  }
+
+  // 敷地境界線 (一点二点鎖線 — 作図慣習)
+  const siteMarks: ReactNode[] = [];
+  for (const [i, poly] of sitePolys.entries()) {
+    const d = poly.points.map((pt, k) => `${k === 0 ? "M" : "L"} ${sx(pt.x)} ${sy(pt.y)}`).join(" ");
+    siteMarks.push(
+      <path
+        key={`site${i}`}
+        d={`${d} Z`}
+        fill="none"
+        stroke="#8a8171"
+        strokeWidth={22}
+        strokeDasharray="280 60 50 60 50 60"
+        pointerEvents="none"
+      />,
+    );
   }
 
   // 通り芯
@@ -413,6 +439,7 @@ export function PlanView() {
         <rect x={view.x} y={view.y} width={view.w} height={view.h} fill={PAPER} pointerEvents="none" />
         {roomFills}
         {areaMarks}
+        {siteMarks}
         {gridMarks}
         <g pointerEvents="none">{wallMarks}</g>
         <g pointerEvents="none">{openingMarks}</g>

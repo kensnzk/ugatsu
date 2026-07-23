@@ -45,6 +45,17 @@ function spaceHeight(model: Model, s: Space): number {
   return heff(model, s) ?? DEFAULT_H;
 }
 
+/** レベルの階高 (次のレベルのzまで)。最上階は 天井高+slab で近似 */
+function levelPitch(model: Model, levelName: string): number | undefined {
+  const level = model.levels[levelName];
+  if (!level) return undefined;
+  const above = Object.values(model.levels)
+    .filter((l) => l.z > level.z)
+    .sort((a, b) => a.z - b.z)[0];
+  if (above) return above.z - level.z;
+  return level.h !== undefined ? level.h + (level.slab ?? 0) : undefined;
+}
+
 function wallLevelAndHeight(model: Model, b: Boundary): { level?: string; z: number; h: number } {
   const sa = model.spaces.get(b.a);
   const sb = model.spaces.get(b.b);
@@ -53,8 +64,12 @@ function wallLevelAndHeight(model: Model, b: Boundary): { level?: string; z: num
   const room = roomA ?? roomB;
   if (!room?.level) return { z: 0, h: DEFAULT_H };
   const z = model.levels[room.level]?.z ?? 0;
+  // 壁は階高いっぱいに立ち上がる (躯体の連続 — 天井高は内装の面)。
+  // 天井高で止めると次の床プレートとの間にスラブ+懐分の隙間が見えてしまう。
+  // 吹抜け上部の壁は上階のvoid空間側の境界が担うので、ここは常に自レベルの階高でよい。
   const hs = [roomA, roomB].filter((r): r is Space => !!r).map((r) => spaceHeight(model, r));
-  return { level: room.level, z, h: Math.min(...(hs.length ? hs : [DEFAULT_H])) };
+  const ceil = Math.max(...(hs.length ? hs : [DEFAULT_H]));
+  return { level: room.level, z, h: levelPitch(model, room.level) ?? ceil };
 }
 
 function boxMesh(
@@ -179,6 +194,28 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     }
   }
 
+  // ---- 敷地形状 (ADR-0011): 所与の多角形を地盤面として描き、境界線を引く ----
+  for (const poly of model.polygons.values()) {
+    const shape = new THREE.Shape(poly.points.map((p) => new THREE.Vector2(p.x, p.y)));
+    const g = new THREE.ShapeGeometry(shape);
+    g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
+    const plate = new THREE.Mesh(
+      g,
+      new THREE.MeshLambertMaterial({ color: 0xe7e1d2, side: THREE.DoubleSide }),
+    );
+    plate.position.y = -30;
+    group.add(plate);
+    const linePts = [...poly.points, poly.points[0]!].map(
+      (p) => new THREE.Vector3(tx(p.x), 25, tz(p.y)),
+    );
+    group.add(
+      new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints(linePts),
+        new THREE.LineBasicMaterial({ color: 0x8a8171 }),
+      ),
+    );
+  }
+
   // ---- 壁 (境界から生成) と開口 ----
   if (stackMode) {
     // プレート上の壁線 (レベルごとに一本のLineSegmentsへまとめる)
@@ -245,7 +282,8 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       const z0 = z;
       // 遮蔽しない物 (air:1 — 手すり・柵): 腰の高さの薄い板 (ADR-0007)
       const isAir = !!b.air;
-      const h = isAir ? 1100 : wallH;
+      const railH = typeof b.attrs["h"] === "number" ? (b.attrs["h"] as number) : 1100;
+      const h = isAir ? railH : wallH;
       const t = isAir ? Math.min(b.t ?? 60, 80) : (b.t ?? 100);
       const mat = isAir ? railMat : wallMat;
       for (const seg of segmentsFor(model, b)) {

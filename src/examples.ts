@@ -1,6 +1,15 @@
 // 同梱の実例 — インストールされた @kensnzk/koyu の examples/ のコピー。
 // koyu を更新したら `npm run sync-examples` で追随する (examples/ は手で編集しない)。
 import house from "../examples/house.muro?raw";
+import towerMain from "../examples/tower/main.muro?raw";
+import towerGeo from "../examples/tower/site-geometry.muro?raw";
+import towerSite from "../examples/tower/site.muro?raw";
+import towerAssets from "../examples/tower/assets.muro?raw";
+import towerL1 from "../examples/tower/L1.muro?raw";
+import towerL2 from "../examples/tower/L2.muro?raw";
+import towerTypical from "../examples/tower/typical.muro?raw";
+import towerL3 from "../examples/tower/L3.muro?raw";
+import towerL11 from "../examples/tower/L11.muro?raw";
 import houseAssets from "../examples/house/assets.muro?raw";
 import houseL1 from "../examples/house/L1.muro?raw";
 import houseL2 from "../examples/house/L2.muro?raw";
@@ -43,6 +52,22 @@ export const EXAMPLES: Example[] = [
     entry: "main.muro",
   },
   single("mansion", "集合住宅 — 10階建て43戸", "mansion.muro", mansion),
+  {
+    key: "tower",
+    label: "街角の複合ビル — 低層商業+高層住宅 (ショーケース・9ファイル合成)",
+    files: {
+      "main.muro": towerMain,
+      "site-geometry.muro": towerGeo,
+      "site.muro": towerSite,
+      "assets.muro": towerAssets,
+      "L1.muro": towerL1,
+      "L2.muro": towerL2,
+      "typical.muro": towerTypical,
+      "L3.muro": towerL3,
+      "L11.muro": towerL11,
+    },
+    entry: "main.muro",
+  },
 ];
 
-export const DEFAULT_EXAMPLE = EXAMPLES.find((e) => e.key === "house-compose")!;
+export const DEFAULT_EXAMPLE = EXAMPLES.find((e) => e.key === "tower")!;

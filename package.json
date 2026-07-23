@@ -1,6 +1,6 @@
 {
   "name": "ugatsu",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "2D/3D viewer for koyu — plans, stacked levels, volumes and area schedules generated from space-first text",
   "type": "module",
@@ -17,7 +17,7 @@
     "@codemirror/language": "^6.10.0",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.35.0",
-    "@kensnzk/koyu": "github:kensnzk/koyu",
+    "@kensnzk/koyu": "file:../koyu",
     "codemirror": "^6.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

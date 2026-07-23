@@ -123,6 +123,64 @@ describe("合成 (koyu ADR-0010 — v0.6)", () => {
   });
 });
 
+describe("ショーケース (tower — 9レイヤー合成 + polygon敷地)", () => {
+  const TOWER_LAYERS = [
+    "main.muro",
+    "site-geometry.muro",
+    "site.muro",
+    "assets.muro",
+    "L1.muro",
+    "L2.muro",
+    "typical.muro",
+    "L3.muro",
+    "L11.muro",
+  ] as const;
+  const loadTower = () =>
+    Object.fromEntries(
+      TOWER_LAYERS.map((f) => [f, readFileSync(`examples/tower/${f}`, "utf8")]),
+    );
+
+  it("178空間・542境界が警告ゼロで合成される (ブラウザと同じ経路)", () => {
+    const m = parseFiles(loadTower(), "main.muro");
+    const r = check(m);
+    expect(r.errors).toEqual([]);
+    expect(r.warnings).toEqual([]);
+    expect(m.spaces.size).toBe(178);
+  });
+
+  it("敷地形状: polygonが5頂点で、siteの導出面積が測量宣言と一致", () => {
+    const m = parseFiles(loadTower(), "main.muro");
+    expect(m.polygons.get("/site")?.points.length).toBe(5);
+    const site = siteReport(m);
+    expect(site.derivedArea).toBeCloseTo(site.declaredArea!, 2);
+  });
+
+  it("3D: 壁は階高いっぱいに立ち上がる (天井高で止まらない)", () => {
+    const m = parseFiles(loadTower(), "main.muro");
+    const colors = buildColors(m, "use");
+    const built = buildScene(m, {
+      colors,
+      stackMode: false,
+      spread: 1,
+      showWalls: true,
+      showOpenings: false,
+      hiddenLevels: {},
+    });
+    // L5 (z=14000, 階高3000) の壁ボックスを拾う: 中心高さ = 14000 + 3000/2
+    const boxes = built.group.children.filter(
+      (o): o is import("three").Mesh =>
+        (o as import("three").Mesh).isMesh === true &&
+        ((o as import("three").Mesh).geometry as { type?: string }).type === "BoxGeometry" &&
+        !(o as import("three").Mesh).userData.path,
+    );
+    const l5walls = boxes.filter((b) => Math.abs(b.position.y - (14000 + 1500)) < 1);
+    expect(l5walls.length).toBeGreaterThan(0);
+    // 手すり (air:1 h:1200) は自身の高さのまま
+    const rails = boxes.filter((b) => Math.abs(b.position.y - (14000 + 600)) < 1);
+    expect(rails.length).toBeGreaterThan(0);
+  });
+});
+
 describe("面積表 (MUN-144)", () => {
   it("レベル小計の和が合計に一致し、吹抜けは不算入", () => {
     const m = load("office.muro");

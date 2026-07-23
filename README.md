@@ -8,7 +8,7 @@ The name 鑿つ/穿つ (*ugatsu*, "to bore through") follows koyu (戸牖, "door
 
 ## What it does
 
-- **Load** — open `.muro` files by drag & drop or file picker; dropping several files at once opens them as composed layers. Ships with koyu's examples (two rooms, a two-storey office with an atrium, a small house with site and roads, **the same house composed from 5 files**, a 10-storey apartment building with 43 units).
+- **Load** — open `.muro` files by drag & drop or file picker; dropping several files at once opens them as composed layers. Ships with koyu's examples (two rooms, a two-storey office with an atrium, a small house with site and roads, **the same house composed from 5 files**, a 10-storey apartment building with 43 units, and the full-feature showcase: **an 11-storey mixed-use corner tower composed from 9 layers with a polygon site** — the default).
 - **Edit** — the left pane is a text editor. Every keystroke re-parses, re-checks and regenerates every view. On a parse error the viewer shows the line and keeps the last consistent model. The text is the original; everything else is derived.
 - **Composition (koyu ADR-0010)** — layers split by `import` are edited as tabs (◈ marks the base layer). Composition runs through koyu's `parseFiles`; conflicts (duplicate paths or asset names) and opening-overflow checks report the source layer and line, and clicking an error jumps to that tab. Door/window assets (`asset`, with sliding/auto `style`) drive the plan symbols.
 - **Plan** — an interactive port of koyu's `plan` drawing conventions: grid lines, centre-line walls, door swings, void diagonals, railings as thin lines, semi-outdoor tinting. Click a space to select it; wheel to zoom.
