@@ -281,6 +281,19 @@ select:hover {
 .scene3d-canvas canvas {
   display: block;
 }
+.scene3d-fallback {
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: fit-content;
+  height: fit-content;
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 14px 18px;
+  line-height: 1.6;
+}
 .panel {
   background: rgba(255, 255, 255, 0.92);
   border: 1px solid var(--line);

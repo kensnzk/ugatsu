@@ -21,6 +21,7 @@ export function Scene3D() {
     built: BuiltScene | null;
   } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; path: string } | null>(null);
+  const [glError, setGlError] = useState(false);
 
   const model = useViewer((s) => s.model);
   const modelKey = useViewer((s) => s.modelKey);
@@ -53,7 +54,15 @@ export function Scene3D() {
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+    } catch (err) {
+      // GPU無効環境 (アクセラレーション停止など) ではコンテキストが作れない
+      console.error("WebGL初期化に失敗:", err);
+      setGlError(true);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(PAPER);
     host.appendChild(renderer.domElement);
@@ -188,6 +197,21 @@ export function Scene3D() {
   }
 
   const downPos = useRef<{ x: number; y: number } | null>(null);
+
+  if (glError) {
+    return (
+      <div className="scene3d">
+        <div className="scene3d-fallback panel">
+          <strong>3D表示を初期化できませんでした</strong>
+          <span>
+            ブラウザでWebGLが利用できません。ハードウェアアクセラレーションを有効にして
+            ブラウザを再起動してください (Chromeは chrome://gpu で状態を確認できます)。
+            平面・表・エディタはそのまま使えます。
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="scene3d">
