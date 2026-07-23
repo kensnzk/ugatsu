@@ -1,6 +1,6 @@
 // 色 — 開かれた語彙に対して安定した割当を行う。
 // 既知の語には固定色、未知の語には出現順でパレットから割り当てる (同一モデル内で安定)。
-import { effectiveUse, type Model, type Space } from "../core/index.js";
+import { effectiveUse, type Model, type Space } from "@kensnzk/koyu";
 
 export type ColorMode = "use" | "type" | "level";
 

@@ -10,8 +10,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-      - run: npm ci
+      # package-lock.json をコミットしたら npm ci + setup-node の cache:npm に戻す
+      - run: npm install
       - run: npm run typecheck
       - run: npm test
       - run: npm run build

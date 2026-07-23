@@ -9,11 +9,11 @@ import { useViewer } from "../state/store.js";
 
 const External = Annotation.define<boolean>();
 
-const KEYWORDS = /^(ifcxs|name|unit|grid|level|space|boundary|zone|stack)\b/;
+const KEYWORDS = /^(koyu|name|unit|grid|level|space|boundary|zone|stack)\b/;
 const SUBS = /^(door|window|seg|area)\b/;
 
-/** IFCXS DSL の簡易ハイライト */
-const ifcxsLanguage = StreamLanguage.define<{ head: boolean }>({
+/** koyu (.muro) の簡易ハイライト */
+const muroLanguage = StreamLanguage.define<{ head: boolean }>({
   startState: () => ({ head: true }),
   token(stream, state) {
     if (stream.sol()) state.head = true;
@@ -66,7 +66,7 @@ export function EditorPane() {
       parent: host,
       extensions: [
         basicSetup,
-        ifcxsLanguage,
+        muroLanguage,
         theme,
         EditorView.updateListener.of((u) => {
           if (!u.docChanged) return;

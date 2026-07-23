@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { svgPlan, toCanonical } from "../core/index.js";
+import { svgPlan, toCanonical } from "@kensnzk/koyu";
 import { EXAMPLES } from "../examples.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
 import type { ColorMode } from "../lib/colors.js";
@@ -27,7 +27,7 @@ export function Toolbar() {
 
   const fileInput = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const base = fileName.replace(/\.ifcxs$/, "");
+  const base = fileName.replace(/\.muro$/, "");
 
   async function openFile(f: File) {
     setSource(await f.text(), f.name);
@@ -36,7 +36,7 @@ export function Toolbar() {
   return (
     <header className="toolbar">
       <div className="brand">
-        <strong>IFCXS Viewer</strong>
+        <strong>ugatsu</strong>
         <span className={`status-dot ${parseError ? "bad" : "good"}`} title={parseError ? "パースエラー" : "整合"} />
         <span className="file-name">{fileName}</span>
       </div>
@@ -62,7 +62,7 @@ export function Toolbar() {
       <input
         ref={fileInput}
         type="file"
-        accept=".ifcxs,.txt"
+        accept=".muro,.txt"
         hidden
         onChange={(e) => {
           const f = e.target.files?.[0];
@@ -77,7 +77,7 @@ export function Toolbar() {
         </button>
         {menuOpen && (
           <div className="menu panel" onClick={() => setMenuOpen(false)}>
-            <button onClick={() => downloadText(fileName, source)}>ソース (.ifcxs)</button>
+            <button onClick={() => downloadText(fileName, source)}>ソース (.muro)</button>
             <button onClick={() => model && downloadText(`${base}.canonical.json`, toCanonical(model), "application/json")} disabled={!model}>
               正準JSON
             </button>

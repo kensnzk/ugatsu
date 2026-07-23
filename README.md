@@ -1,43 +1,48 @@
-# IFCXS Viewer
+# ugatsu
 
-空間一次のテキスト記述 [IFCXS](../IFCXS) の 2D/3D ビューワー。ソースに形は無い — 平面図・レベルの重ね (2.5D)・立体・面積表は、すべてテキストからその場で生成される。
+*[日本語版 README](README.ja.md)*
 
-位置づけは IFCXS 本体の M1-2「関連ツール整備」(デバグ的な道具立て)。Linear: [MUN-143](https://linear.app/munipersonal/issue/MUN-143) (一つのファイルとして閲覧できる2D/3Dビューワー) / [MUN-144](https://linear.app/munipersonal/issue/MUN-144) (クエリして面積表などにまとめるツール)。
+A 2D/3D viewer for [koyu](https://github.com/kensnzk/koyu) — the space-first, text-native architectural notation. The source text has no geometry in it; plans, stacked levels, 3D volumes and area schedules are all generated from the text, live, as you edit.
 
-## できること
+The name 鑿つ/穿つ (*ugatsu*, "to bore through") follows koyu (戸牖, "door and window" — Laozi ch. 11): openings are what make rooms usable, and a viewer is the act of opening a way into the text.
 
-- **読み込み** — `.ifcxs` (author形式DSL) をドラッグ&ドロップ / ファイル選択で開く。two-rooms / office / mansion の実例を同梱。
-- **エディタ** — 左ペインでソースを直接編集すると、パース → check → 全ビューが即座に追随する。エラー時は行番号つきで表示し、画面は最後に整合したモデルを保つ。テキストが原本であることの実演であり、将来のGUIオーサリングの土台 (GUI操作 = テキスト書き換え)。
-- **平面** — core の svgPlan と同じ作図規約 (通り芯・壁芯・扉の軌跡・吹抜けの対角線・数えない分節) のインタラクティブ版。レベル切替、ホイール拡大、クリックで空間選択。
-- **3D** — 空間を天井高で押し出し、壁は境界から厚みつきで生成、扉・窓を壁面に表示。色は 用途 / 型 / レベル で塗り分け。レベル単位の表示切替。
-- **2.5D 重ね** — 各レベルの床プレートを実高さ×展開係数で持ち上げて重ねる。吹抜け (void) はプレートを置かない = 床の不在がそのまま穴になる。
-- **面積表** — レベル別の室リストと小計、ゾーン集計 (専有面積)、用途別面積比 (レンタブル比)、型別集計。CSV書き出し。
-- **グラフ** — 空間を選ぶと隣接 (境界の種別・扉数・耐火) が出る。経路クエリ「扉をいくつ通るか」は doorsBetween がそのまま答える。
-- **書き出し** — ソース / 正準JSON / 平面SVG / 面積表CSV / **配布用HTML** (モデルを埋め込んだ単一ファイル。閲覧に必要なものはこの1ファイルだけ)。
+## What it does
 
-## 使い方
+- **Load** — open `.muro` files by drag & drop or file picker. Ships with koyu's examples (two rooms, a two-storey office with an atrium, a small house with site and roads, a 10-storey apartment building with 43 units).
+- **Edit** — the left pane is a text editor. Every keystroke re-parses, re-checks and regenerates every view. On a parse error the viewer shows the line and keeps the last consistent model. The text is the original; everything else is derived.
+- **Plan** — an interactive port of koyu's `plan` drawing conventions: grid lines, centre-line walls, door swings, void diagonals, railings as thin lines, semi-outdoor tinting. Click a space to select it; wheel to zoom.
+- **3D** — spaces extruded to their ceiling heights, walls generated from boundaries with thickness, doors and windows on wall faces, railings at waist height. Colour by use / type / level; per-level visibility.
+- **2.5D stack** — floor plates lifted by real height × an expansion factor. A void has no plate: the absence of floor appears as a hole, which is exactly what a void is.
+- **Area schedule** — per-level space lists with subtotals, zone aggregation (exclusive-area sums), use ratios, per-type totals, CSV export. Site report (site area declared vs derived, building footprint, road frontage) when the model has a site.
+- **Graph** — select a space to see its neighbours (boundary kind, doors, fire rating). "How many doors from here to there?" is answered by `doorsBetween`, with the route highlighted on the plan.
+- **Export** — source, canonical JSON, plan SVG, area CSV, and a **self-contained HTML file with the model embedded** — one file that anyone can open in a browser, no install.
+
+## Usage
 
 ```sh
 npm install
-npm run dev        # 開発サーバー
-npm test           # vitest
+npm run dev            # dev server
+npm test               # vitest
 npm run typecheck
-npm run build      # dist/index.html — ビューワー全体が単一HTML
-npm run embed -- examples/mansion.ifcxs   # モデル埋め込みの配布用HTMLを生成
-npm run sync-core  # ../IFCXS から vendor コアを更新
+npm run build          # dist/index.html — the whole viewer is a single HTML file
+npm run embed -- examples/mansion.muro   # emit a distributable HTML with the model embedded
+npm run sync-examples  # refresh bundled examples from the installed koyu
 ```
 
-ビルド産物は常に単一HTML。`dist/index.html` をそのまま送れば誰でもブラウザで開ける (MUN-143)。ビューワーのUI内「書き出し → 配布用HTML」でも同じものが作れる。
+The build artefact is always a single HTML file. Send `dist/index.html` to anyone and it opens in a browser.
 
-## 構成
+## Structure
 
 ```
-src/core/        IFCXS本体 src/ の vendor コピー (手で編集しない — sync-core で追随)
-src/state/       zustand ストア。原本=ソーステキスト、モデルは導出物
+src/state/       zustand store — the source text is the only original; the model is derived
 src/components/  Toolbar / EditorPane / PlanView / Scene3D / AreaTable / Inspector
-src/three/       モデル → three.js シーン生成 (3D / 2.5D)
-src/lib/         色割当・面積集計・書き出し
-examples/        本体 examples/ のコピー (sync-core が追随)
+src/three/       model → three.js scene (3D and 2.5D stack)
+src/lib/         colour assignment, area statistics, exports
+examples/        copies of koyu's examples (refreshed by sync-examples)
 ```
 
-設計判断 (three.js直・vendor方針・単一HTML・オーサリングの向き) は [docs/decisions/0001-viewer-v0.md](docs/decisions/0001-viewer-v0.md)。
+koyu is consumed as a package (`@kensnzk/koyu`) — the viewer holds no answers of its own; every derivation (wall segments, areas, routes, checks, daylight, site) is a call into koyu. Design decisions are recorded in [docs/decisions/](docs/decisions/).
+
+## License
+
+Code is licensed under [Apache-2.0](LICENSE) (see also [NOTICE](NOTICE)).

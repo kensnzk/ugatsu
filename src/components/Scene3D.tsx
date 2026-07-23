@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { areaM2, displayName } from "../core/index.js";
+import { areaM2, displayName } from "@kensnzk/koyu";
 import { buildColors, SELECT_COLOR, ROUTE_COLOR } from "../lib/colors.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";

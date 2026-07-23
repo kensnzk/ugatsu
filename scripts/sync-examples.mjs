@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+// インストール済みの @kensnzk/koyu から同梱例 (.muro) を更新する。
+//   npm run sync-examples
+// examples/ は手で編集しない — 例の原本は koyu 側にある。
+// 新しい例が増えたら src/examples.ts への登録も忘れずに。
+import { copyFileSync, mkdirSync, readdirSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = dirname(fileURLToPath(import.meta.url));
+const root = resolve(here, "..");
+const require = createRequire(import.meta.url);
+const pkgJson = require.resolve("@kensnzk/koyu/package.json");
+const src = join(dirname(pkgJson), "examples");
+
+mkdirSync(join(root, "examples"), { recursive: true });
+for (const f of readdirSync(src)) {
+  if (!f.endsWith(".muro")) continue;
+  copyFileSync(join(src, f), join(root, "examples", f));
+  console.log(`example ← ${f}`);
+}
+console.log("done.");

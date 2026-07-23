@@ -1,5 +1,5 @@
 // 面積表 — 「面積表に一行として現れてほしいか」が space のリトマス試験である以上、
-// この表は IFCXS の一次要素の一覧そのものになる (MUN-144)。
+// この表は koyu の一次要素の一覧そのものになる (MUN-144)。
 import { useMemo } from "react";
 import { computeStats, statsToCsv } from "../lib/stats.js";
 import { downloadText } from "../lib/download.js";
@@ -26,7 +26,7 @@ export function AreaTable() {
         <button
           className="mini"
           onClick={() =>
-            downloadText(fileName.replace(/\.ifcxs$/, "") + ".areas.csv", statsToCsv(stats, model.name ?? fileName), "text/csv")
+            downloadText(fileName.replace(/\.muro$/, "") + ".areas.csv", statsToCsv(stats, model.name ?? fileName), "text/csv")
           }
         >
           CSV書き出し

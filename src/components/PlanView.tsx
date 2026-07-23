@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   areaM2,
   displayName,
+  isSemiOutdoor,
   placeBand,
   placeOpening,
   segmentsFor,
@@ -11,8 +12,7 @@ import {
   type Model,
   type Opening,
   type Segment,
-  type Space,
-} from "../core/index.js";
+} from "@kensnzk/koyu";
 import { buildColors, ROUTE_COLOR, SELECT_COLOR, VOID_COLOR } from "../lib/colors.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Legend } from "./Legend.js";
@@ -115,6 +115,8 @@ export function PlanView() {
   const selectionMarks: ReactNode[] = []; // 壁より上の層に描く
   for (const s of rooms) {
     const isVoid = s.type === "void";
+    // 半屋外 (外部にopen/air境界で接する — 導出) は淡く、屋外であることが図から読めるように
+    const semi = !isVoid && isSemiOutdoor(model, s);
     const fill = isVoid ? PAPER : colors.colorOf(s);
     const isSel = s.path === selected;
     const isRoute = onRoute.has(s.path);
@@ -127,7 +129,7 @@ export function PlanView() {
           width={r.x2 - r.x1}
           height={r.y2 - r.y1}
           fill={fill}
-          fillOpacity={isVoid ? 1 : s.path === hovered ? 0.62 : 0.42}
+          fillOpacity={isVoid ? 1 : s.path === hovered ? (semi ? 0.4 : 0.62) : semi ? 0.18 : 0.42}
           style={{ cursor: "pointer" }}
           onPointerUp={() => {
             if (wasClick()) select(s.path === selected ? null : s.path);
@@ -178,7 +180,7 @@ export function PlanView() {
         </text>
         {!small && (
           <text x={cx} y={cy + 260} fontSize={200} fill="#8a8171">
-            {s.type === "void" ? "吹抜け" : `${s.type} ・ ${a?.toFixed(1)}㎡`}
+            {s.type === "void" ? "吹抜け" : `${s.type}${semi ? " ・ 半屋外" : ""} ・ ${a?.toFixed(1)}㎡`}
           </text>
         )}
         {!small && (
@@ -275,6 +277,33 @@ export function PlanView() {
       continue;
     }
     if (b.kind !== "wall") continue;
+    if (b.air) {
+      // 遮蔽しない物 (手すり・柵 = spec語彙): 細実線 — 黒帯と描き分ける (ADR-0007)
+      for (const [i, seg] of segmentsFor(model, b).entries()) {
+        wallMarks.push(
+          <line
+            key={`air${b.line}#${i}`}
+            x1={sx(seg.x1)}
+            y1={sy(seg.y1)}
+            x2={sx(seg.x2)}
+            y2={sy(seg.y2)}
+            stroke={INK}
+            strokeWidth={28}
+          />,
+        );
+      }
+      // 柵の扉 (門扉など): 線を切って軌跡を描く
+      for (const [i, o] of b.openings.entries()) {
+        if (o.kind !== "door") continue;
+        const placed = placeOpening(model, b, o);
+        if ("error" in placed) continue;
+        openingMarks.push(
+          <rect key={`aircut${b.line}#${i}`} {...bandRect(placed.segment, o.w, placed.cx, placed.cy, 120, sx, sy)} fill={PAPER} />,
+          <g key={`airdoor${b.line}#${i}`}>{doorSwing(model, b, o, placed.segment, placed.cx, placed.cy, sx, sy)}</g>,
+        );
+      }
+      continue;
+    }
     const t = b.t ?? WALL_DEFAULT_T;
     for (const [i, seg] of segmentsFor(model, b).entries()) {
       wallMarks.push(
@@ -394,7 +423,7 @@ export function PlanView() {
             {`${model.name ?? "無題"} — ${planLevel} 平面`}
           </text>
           <text x={extent.W - M + 1240} y={extent.H - 360} textAnchor="end" fontSize={180} fill="#a49b8a">
-            ifcxs — 空間から生成 (壁芯・mm)
+            koyu — 空間から生成 (壁芯・mm)
           </text>
         </g>
       </svg>
@@ -430,7 +459,7 @@ function bandRect(
   return { x: sx(cx - t / 2), y: sy(cy + w / 2), width: t, height: w };
 }
 
-/** 扉の吊元と軌跡 (core/plan.ts の doorSwing の移植) */
+/** 扉の吊元と軌跡 (koyu plan.ts の doorSwing の移植 — hinge/swing 対応, ADR-0007) */
 function doorSwing(
   model: Model,
   b: Boundary,
@@ -441,25 +470,32 @@ function doorSwing(
   sx: (x: number) => number,
   sy: (y: number) => number,
 ): ReactNode {
+  // 開く側の空間: swing:a/b の指定、既定はa側 (領域を持つ方)。合併なら扉に最も近い矩形へ開く
   const sa = model.spaces.get(b.a);
   const sb = model.spaces.get(b.b);
-  const into = sa && sa.rects.length > 0 ? sa : sb && sb.rects.length > 0 ? sb : undefined;
-  if (!into) return null;
+  let into: typeof sa;
+  if (o.swing === "a") into = sa;
+  else if (o.swing === "b") into = sb;
+  else into = sa && sa.rects.length > 0 ? sa : sb;
+  if (!into || into.rects.length === 0) return null;
   const dist = (rc: { x1: number; y1: number; x2: number; y2: number }) =>
     ((rc.x1 + rc.x2) / 2 - cx) ** 2 + ((rc.y1 + rc.y2) / 2 - cy) ** 2;
   const r = [...into.rects].sort((p, q) => dist(p) - dist(q))[0]!;
   const c = { x: (r.x1 + r.x2) / 2, y: (r.y1 + r.y2) / 2 };
 
+  // 吊元 hinge (hinge:W/E/S/N — 既定は始端側)、軌跡は hinge を中心とする1/4円
   let hinge: { x: number; y: number };
   let along: { x: number; y: number };
   let inward: { x: number; y: number };
   if (seg.horizontal) {
-    hinge = { x: cx - o.w / 2, y: cy };
-    along = { x: 1, y: 0 };
+    const fromEast = o.hinge === "E";
+    hinge = { x: fromEast ? cx + o.w / 2 : cx - o.w / 2, y: cy };
+    along = { x: fromEast ? -1 : 1, y: 0 };
     inward = { x: 0, y: c.y > cy ? 1 : -1 };
   } else {
-    hinge = { x: cx, y: cy - o.w / 2 };
-    along = { x: 0, y: 1 };
+    const fromNorth = o.hinge === "N";
+    hinge = { x: cx, y: fromNorth ? cy + o.w / 2 : cy - o.w / 2 };
+    along = { x: 0, y: fromNorth ? -1 : 1 };
     inward = { x: c.x > cx ? 1 : -1, y: 0 };
   }
   const leafEnd = { x: hinge.x + inward.x * o.w, y: hinge.y + inward.y * o.w };

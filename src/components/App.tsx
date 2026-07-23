@@ -13,7 +13,7 @@ export function App() {
   const setSource = useViewer((s) => s.setSource);
   const [dropping, setDropping] = useState(false);
 
-  // .ifcxs のドラッグ&ドロップ
+  // .muro のドラッグ&ドロップ
   useEffect(() => {
     let depth = 0;
     const onDragEnter = (e: DragEvent) => {
@@ -31,7 +31,7 @@ export function App() {
       depth = 0;
       setDropping(false);
       const f = e.dataTransfer?.files?.[0];
-      if (f && /\.(ifcxs|txt)$/.test(f.name)) {
+      if (f && /\.(muro|txt)$/.test(f.name)) {
         void f.text().then((text) => setSource(text, f.name));
       }
     };
@@ -64,7 +64,7 @@ export function App() {
         </main>
         <Inspector />
       </div>
-      {dropping && <div className="drop-overlay">.ifcxs をドロップして開く</div>}
+      {dropping && <div className="drop-overlay">.muro をドロップして開く</div>}
     </div>
   );
 }

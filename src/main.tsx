@@ -9,13 +9,13 @@ import "./styles.css";
 capturePristineHtml();
 
 // 埋め込みモデル (MUN-143: 一つのファイルとして閲覧) があればそれを、なければ同梱の例を開く
-const embedEl = document.getElementById("ifcxs-embed");
+const embedEl = document.getElementById("muro-embed");
 const embedded = embedEl?.textContent?.trim();
 if (embedded) {
   try {
     useViewer
       .getState()
-      .setSource(decodeBase64(embedded), embedEl?.getAttribute("data-name") ?? "embedded.ifcxs");
+      .setSource(decodeBase64(embedded), embedEl?.getAttribute("data-name") ?? "embedded.muro");
   } catch {
     useViewer.getState().setSource(DEFAULT_EXAMPLE.source, DEFAULT_EXAMPLE.fileName);
   }

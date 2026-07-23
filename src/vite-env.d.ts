@@ -1,6 +1,6 @@
 /// <reference types="vite/client" />
 
-declare module "*.ifcxs?raw" {
+declare module "*.muro?raw" {
   const src: string;
   export default src;
 }

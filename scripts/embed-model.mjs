@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 生成した図面 (モデル) を一つのファイルとして閲覧できるHTMLに埋め込む (MUN-143)。
 //   npm run build
-//   npm run embed -- path/to/model.ifcxs [-o out.html]
+//   npm run embed -- path/to/model.muro [-o out.html]
 // ビューワーのUI内 (書き出し→配布用HTML) でも同じことができる。これはCI/CLI向け。
 import { readFileSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
@@ -14,7 +14,7 @@ const args = process.argv.slice(2);
 const input = args.find((a) => !a.startsWith("-"));
 const oIdx = args.indexOf("-o");
 if (!input) {
-  console.error("使い方: npm run embed -- <model.ifcxs> [-o out.html]");
+  console.error("使い方: npm run embed -- <model.muro> [-o out.html]");
   process.exit(2);
 }
 const dist = join(root, "dist", "index.html");
@@ -30,9 +30,9 @@ const source = readFileSync(input, "utf8");
 const name = basename(input);
 const b64 = Buffer.from(source, "utf8").toString("base64");
 
-const re = /(<script[^>]*id="ifcxs-embed"[^>]*>)([\s\S]*?)(<\/script>)/;
+const re = /(<script[^>]*id="muro-embed"[^>]*>)([\s\S]*?)(<\/script>)/;
 if (!re.test(html)) {
-  console.error("埋め込みポイント (id=ifcxs-embed) が見つかりません。");
+  console.error("埋め込みポイント (id=muro-embed) が見つかりません。");
   process.exit(1);
 }
 const out = html.replace(
@@ -41,6 +41,6 @@ const out = html.replace(
     open.replace(/\s*data-name="[^"]*"/, "").replace(/>$/, ` data-name="${name}">`) + b64 + close,
 );
 
-const outFile = oIdx >= 0 && args[oIdx + 1] ? args[oIdx + 1] : input.replace(/\.ifcxs$/, "") + ".viewer.html";
+const outFile = oIdx >= 0 && args[oIdx + 1] ? args[oIdx + 1] : input.replace(/\.muro$/, "") + ".ugatsu.html";
 writeFileSync(outFile, out);
 console.log(`書き出しました: ${outFile} (${(out.length / 1024 / 1024).toFixed(2)} MB)`);

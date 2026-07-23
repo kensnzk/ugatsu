@@ -40,14 +40,14 @@ export function decodeBase64(b64: string): string {
 export function exportEmbeddedHtml(source: string, fileName: string): boolean {
   if (!pristineHtml || !import.meta.env.PROD) return false;
   const b64 = encodeBase64(source);
-  const re = /(<script[^>]*id="ifcxs-embed"[^>]*>)([\s\S]*?)(<\/script>)/;
+  const re = /(<script[^>]*id="muro-embed"[^>]*>)([\s\S]*?)(<\/script>)/;
   if (!re.test(pristineHtml)) return false;
   const html = pristineHtml.replace(
     re,
     (_m, open: string, _body: string, close: string) =>
       open.replace(/\s*data-name="[^"]*"/, "").replace(">", ` data-name="${fileName}">`) + b64 + close,
   );
-  const out = fileName.replace(/\.ifcxs$/, "") + ".viewer.html";
+  const out = fileName.replace(/\.muro$/, "") + ".ugatsu.html";
   downloadText(out, html, "text/html");
   return true;
 }

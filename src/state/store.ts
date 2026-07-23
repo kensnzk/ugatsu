@@ -8,7 +8,7 @@ import {
   SourceError,
   type Model,
   type Route,
-} from "../core/index.js";
+} from "@kensnzk/koyu";
 import type { ColorMode } from "../lib/colors.js";
 
 export type MainView = "plan" | "3d" | "table";
@@ -81,7 +81,7 @@ function computeRoute(
 
 export const useViewer = create<ViewerState>()((set, get) => ({
   source: "",
-  fileName: "untitled.ifcxs",
+  fileName: "untitled.muro",
   model: null,
   modelKey: 0,
   fitKey: "",

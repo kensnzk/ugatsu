@@ -7,7 +7,7 @@ import {
   zoneAreaM2,
   type Model,
   type Space,
-} from "../core/index.js";
+} from "@kensnzk/koyu";
 
 export interface SpaceRow {
   path: string;

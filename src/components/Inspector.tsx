@@ -6,9 +6,11 @@ import {
   displayName,
   effectiveUse,
   heff,
+  isSemiOutdoor,
   neighbors,
+  siteReport,
   type Boundary,
-} from "../core/index.js";
+} from "@kensnzk/koyu";
 import { useViewer } from "../state/store.js";
 
 function boundaryMark(b: Boundary, passable: boolean, doors: number): string {
@@ -22,6 +24,7 @@ function boundaryMark(b: Boundary, passable: boolean, doors: number): string {
     case "void":
       return "↕ 吹抜け";
     default:
+      if (b.air) return passable ? `¦ 柵 — 扉${doors}` : "¦ 手すり・柵";
       return passable ? `— 扉${doors}` : "│ 壁";
   }
 }
@@ -53,6 +56,7 @@ export function Inspector() {
   if (!model) return <aside className="inspector" />;
 
   if (!space) {
+    const site = siteReport(model);
     return (
       <aside className="inspector">
         <h2>{model.name ?? "無題"}</h2>
@@ -83,6 +87,41 @@ export function Inspector() {
             </tr>
           </tbody>
         </table>
+        {site.siteZone && (
+          <>
+            <h3>敷地 — 構成からの導出</h3>
+            <table className="kv">
+              <tbody>
+                <tr>
+                  <td>敷地面積</td>
+                  <td>
+                    {site.derivedArea.toFixed(2)} ㎡
+                    {site.declaredArea !== undefined && (
+                      <span className="muted"> / 宣言 {site.declaredArea.toFixed(2)}</span>
+                    )}
+                  </td>
+                </tr>
+                <tr>
+                  <td>建築面積</td>
+                  <td>{site.footprint.toFixed(2)} ㎡</td>
+                </tr>
+                <tr>
+                  <td>延べ面積</td>
+                  <td>{site.totalFloor.toFixed(2)} ㎡</td>
+                </tr>
+                {site.roads.map((r, i) => (
+                  <tr key={i}>
+                    <td>接道</td>
+                    <td>
+                      {displayName(r.road)} 幅員{(r.width / 1000).toFixed(1)}m ・ 接道長{" "}
+                      {(r.frontage / 1000).toFixed(1)}m
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
         <p className="hint">
           空間をクリックすると属性と隣接が出ます。壁は二空間の境界であり、平面も立体もこのテキストからの生成物です。
         </p>
@@ -116,6 +155,12 @@ export function Inspector() {
             <td>面積</td>
             <td>{space.type === "void" ? "吹抜け (不算入)" : `${areaM2(space)?.toFixed(2) ?? "–"} ㎡`}</td>
           </tr>
+          {isSemiOutdoor(model, space) && (
+            <tr>
+              <td>半屋外</td>
+              <td>外部に開く (導出)</td>
+            </tr>
+          )}
           {h !== undefined && (
             <tr>
               <td>天井高</td>

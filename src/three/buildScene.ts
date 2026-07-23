@@ -4,12 +4,13 @@
 import * as THREE from "three";
 import {
   heff,
+  isSemiOutdoor,
   placeOpening,
   segmentsFor,
   type Boundary,
   type Model,
   type Space,
-} from "../core/index.js";
+} from "@kensnzk/koyu";
 import type { ModelColors } from "../lib/colors.js";
 
 export interface SceneOptions {
@@ -138,7 +139,9 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       continue;
     }
 
-    const h = spaceHeight(model, s);
+    // 半屋外 (庭・テラス・バルコニー — 導出) は気積でなく地面: 薄いプレートで描く
+    const semi = isSemiOutdoor(model, s);
+    const h = semi ? 150 : spaceHeight(model, s);
     if (isVoid) {
       // 吹抜け: 実体を持たない気積 — 輪郭線だけの幽霊
       for (const r of s.rects) {
@@ -157,12 +160,9 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       }
       continue;
     }
-    const mat = new THREE.MeshLambertMaterial({
-      color,
-      transparent: true,
-      opacity: 0.5,
-      depthWrite: false,
-    });
+    const mat = semi
+      ? new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
+      : new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false });
     for (const r of s.rects) {
       const m = boxMesh(
         r.x2 - r.x1,
@@ -182,15 +182,15 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
   // ---- 壁 (境界から生成) と開口 ----
   if (stackMode) {
     // プレート上の壁線 (レベルごとに一本のLineSegmentsへまとめる)
-    const byLevel = new Map<string, { walls: number[]; opens: number[] }>();
+    const byLevel = new Map<string, { walls: number[]; opens: number[]; airs: number[] }>();
     for (const b of model.boundaries) {
       if (b.kind !== "wall" && b.kind !== "open") continue;
       const { level, z } = wallLevelAndHeight(model, b);
       if (!level || levelHidden(level)) continue;
       const zTop = z * spread + PLATE_T + 20;
-      const bucket = byLevel.get(level) ?? { walls: [], opens: [] };
+      const bucket = byLevel.get(level) ?? { walls: [], opens: [], airs: [] };
       byLevel.set(level, bucket);
-      const arr = b.kind === "wall" ? bucket.walls : bucket.opens;
+      const arr = b.kind === "open" ? bucket.opens : b.air ? bucket.airs : bucket.walls;
       for (const seg of segmentsFor(model, b)) {
         arr.push(tx(seg.x1), zTop, tz(seg.y1), tx(seg.x2), zTop, tz(seg.y2));
       }
@@ -198,6 +198,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     for (const [level, bucket] of byLevel) {
       for (const [arr, mat] of [
         [bucket.walls, new THREE.LineBasicMaterial({ color: LINE })],
+        [bucket.airs, new THREE.LineBasicMaterial({ color: 0x8d8578, transparent: true, opacity: 0.8 })],
         [
           bucket.opens,
           new THREE.LineDashedMaterial({ color: 0x9a9384, dashSize: 240, gapSize: 160 }),
@@ -232,19 +233,28 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       transparent: true,
       opacity: 0.55,
     });
+    const railMat = new THREE.MeshLambertMaterial({
+      color: 0x9a9184,
+      transparent: true,
+      opacity: 0.75,
+    });
     for (const b of model.boundaries) {
       if (b.kind !== "wall") continue;
-      const { level, z, h } = wallLevelAndHeight(model, b);
+      const { level, z, h: wallH } = wallLevelAndHeight(model, b);
       if (!level || levelHidden(level)) continue;
-      const z0 = z * 1;
-      const t = b.t ?? 100;
+      const z0 = z;
+      // 遮蔽しない物 (air:1 — 手すり・柵): 腰の高さの薄い板 (ADR-0007)
+      const isAir = !!b.air;
+      const h = isAir ? 1100 : wallH;
+      const t = isAir ? Math.min(b.t ?? 60, 80) : (b.t ?? 100);
+      const mat = isAir ? railMat : wallMat;
       for (const seg of segmentsFor(model, b)) {
         const m = seg.horizontal
-          ? boxMesh(seg.x2 - seg.x1, h, t, tx((seg.x1 + seg.x2) / 2), ty(z0) + h / 2, tz(seg.y1), wallMat)
-          : boxMesh(t, h, seg.y2 - seg.y1, tx(seg.x1), ty(z0) + h / 2, tz((seg.y1 + seg.y2) / 2), wallMat);
+          ? boxMesh(seg.x2 - seg.x1, h, t, tx((seg.x1 + seg.x2) / 2), ty(z0) + h / 2, tz(seg.y1), mat)
+          : boxMesh(t, h, seg.y2 - seg.y1, tx(seg.x1), ty(z0) + h / 2, tz((seg.y1 + seg.y2) / 2), mat);
         group.add(m);
       }
-      if (!opts.showOpenings) continue;
+      if (isAir || !opts.showOpenings) continue;
       for (const o of b.openings) {
         const placed = placeOpening(model, b, o);
         if ("error" in placed) continue;
