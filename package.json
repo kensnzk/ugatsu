@@ -1,0 +1,37 @@
+{
+  "name": "ifcxs-viewer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "IFCXS の2D/3Dビューワー — 空間一次のテキストから平面・重ね・立体・面積表を生成して見る",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "sync-core": "node scripts/sync-core.mjs",
+    "embed": "node scripts/embed-model.mjs"
+  },
+  "dependencies": {
+    "@codemirror/language": "^6.10.0",
+    "@codemirror/state": "^6.5.0",
+    "@codemirror/view": "^6.35.0",
+    "codemirror": "^6.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.170.0",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.170.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.0",
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "^2.0.3",
+    "vitest": "^2.1.8"
+  }
+}

@@ -1,0 +1,294 @@
+// IFCXS v0 — データモデル
+// 一次要素は空間。壁は二つの空間の「境界」という関係であり、物ではない。
+// 形はここには無い。形は生成物である。(docs/writing-architecture.md)
+
+export type AttrValue = string | number;
+export type Attrs = Record<string, AttrValue>;
+
+/** 方位。edge指定は「最初に書いた空間」の矩形から見た辺。N=+Y, S=-Y, E=+X, W=-X */
+export type Edge = "N" | "E" | "S" | "W";
+
+export interface Level {
+  name: string;
+  /** FLの高さ mm */
+  z: number;
+  /** 階の基準天井高 mm */
+  h?: number;
+  /** この階の床組み厚 mm (下階の天井面から自階FLまで: スラブ+懐+仕上) */
+  slab?: number;
+}
+
+export interface GridAxis {
+  /** 通り名 (X1, X2, ...) */
+  names: string[];
+  /** 座標 mm */
+  coords: number[];
+}
+
+/** mm矩形 (x1<x2, y1<y2) */
+export interface Rect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
+
+/**
+ * 数えない分節 — 室に従属する領域 (床材の切替など)。
+ * 面積・室数・グラフには一切現れない。属性の上書きだけを運ぶ (ADR-0003)
+ */
+export interface Area {
+  grid: { xa: string; xb: string; ya: string; yb: string };
+  rect: Rect;
+  attrs: Attrs;
+  line: number;
+}
+
+export interface GridRef {
+  xa: string;
+  xb: string;
+  ya: string;
+  yb: string;
+}
+
+export interface Space {
+  /** パスが同一性。/L1/a のように人間が読める階層で名指す */
+  path: string;
+  /** 開かれた語彙 (room, corridor, exterior, void, ...) */
+  type: string;
+  /** 所属レベル名 (パスの先頭セグメントがレベル名なら自動判定) */
+  level?: string;
+  /** グリッド参照。複数矩形の合併でL字などを表す (rectsと同順) */
+  grids: GridRef[];
+  /** グリッド解決後のmm矩形の合併。exteriorなどは空 */
+  rects: Rect[];
+  /** 数えない分節 (字下げのarea行) */
+  areas: Area[];
+  attrs: Attrs;
+  line: number;
+}
+
+/**
+ * ゾーン — 数える集約。住戸・部門など、空間の上位のくくり。
+ * 幾何は持たず、パス接頭辞で束ねた空間の面積の合計として面積を持つ (ADR-0005)
+ */
+export interface Zone {
+  path: string;
+  attrs: Attrs;
+  line: number;
+}
+
+/**
+ * 水平: wall (壁) / open (垂れ壁の有無を言わない開放的な分節 — 基本計画の抽象度)
+ * 垂直: stair (階段 — 通行可) / shaft (EV等 — 連続するが通行不可) /
+ *       void (吹抜け — 床の不在。下階の空間が上階の空間へ立ち上がる)
+ * 垂直の既定は床 (slab) であり書かない。levelのslab宣言が一括で与える。
+ */
+export type BoundaryKind = "wall" | "open" | "stair" | "shaft" | "void";
+
+export interface Opening {
+  kind: "door" | "window";
+  /** 幅 mm */
+  w: number;
+  /** 高さ mm */
+  h?: number;
+  /** 区間上の位置 0..1 (既定 0.5) */
+  at: number;
+  /** 区間が複数あるとき (外部境界など) の辺の指定 */
+  edge?: Edge;
+  attrs: Attrs;
+  line: number;
+}
+
+/**
+ * 境界上の数えない分節 — 壁材が途中から変わる区間など。
+ * 開口と同じ流儀で位置 (at, w) を持つが、通行・接続には一切影響しない (ADR-0003)
+ */
+export interface Seg {
+  /** 幅 mm */
+  w: number;
+  /** 区間中心の位置 0..1 (既定 0.5) */
+  at: number;
+  edge?: Edge;
+  attrs: Attrs;
+  line: number;
+}
+
+/** 境界はどちらの空間にも属さない。二つの空間パスを結ぶ第一級の関係 */
+export interface Boundary {
+  a: string;
+  b: string;
+  kind: BoundaryKind;
+  /** 壁厚 mm (通り芯・境界線に対して芯振り分け) */
+  t?: number;
+  /** 境界をaの矩形から見た特定の辺に限定する */
+  edge?: Edge;
+  attrs: Attrs;
+  openings: Opening[];
+  /** 数えない分節 (字下げのseg行) */
+  segs: Seg[];
+  line: number;
+}
+
+export interface Model {
+  version: string;
+  name?: string;
+  unit: "mm";
+  grid: { X: GridAxis; Y: GridAxis };
+  levels: Record<string, Level>;
+  spaces: Map<string, Space>;
+  zones: Map<string, Zone>;
+  boundaries: Boundary[];
+}
+
+export class SourceError extends Error {
+  constructor(
+    public line: number,
+    message: string,
+  ) {
+    super(`${line}行目: ${message}`);
+    this.name = "SourceError";
+  }
+}
+
+/** 面積 (壁芯) m²。複数矩形は合計 (重なりはcheckが禁じる) */
+export function areaM2(s: Space): number | undefined {
+  if (s.rects.length === 0) return undefined;
+  const a = s.rects.reduce((sum, r) => sum + (r.x2 - r.x1) * (r.y2 - r.y1), 0) / 1e6;
+  return Math.round(a * 100) / 100;
+}
+
+/** ゾーンの面積 = パス接頭辞で束ねた空間の合計 (吹抜けvoidは数えない) */
+export function zoneAreaM2(model: Model, zonePath: string): number {
+  let sum = 0;
+  for (const s of model.spaces.values()) {
+    if (!s.path.startsWith(zonePath + "/")) continue;
+    if (s.type === "void") continue;
+    sum += areaM2(s) ?? 0;
+  }
+  return Math.round(sum * 100) / 100;
+}
+
+/** 実効use属性 — 自分に無ければ、最も深いゾーン祖先から継承する */
+export function effectiveUse(model: Model, s: Space): string | undefined {
+  const own = s.attrs["use"];
+  if (typeof own === "string") return own;
+  let best: string | undefined;
+  let bestLen = -1;
+  for (const z of model.zones.values()) {
+    if (s.path.startsWith(z.path + "/") && z.path.length > bestLen) {
+      const u = z.attrs["use"];
+      if (typeof u === "string") {
+        best = u;
+        bestLen = z.path.length;
+      }
+    }
+  }
+  return best;
+}
+
+/** 空間の有効天井高 mm (space自身のh属性 → レベルのh の順) */
+export function heff(model: Model, s: Space): number | undefined {
+  const own = s.attrs["h"];
+  if (typeof own === "number") return own;
+  return s.level ? model.levels[s.level]?.h : undefined;
+}
+
+/** レベルをzの昇順で返す */
+export function levelsSorted(model: Model): Level[] {
+  return Object.values(model.levels).sort((a, b) => a.z - b.z);
+}
+
+export function displayName(s: Space): string {
+  const n = s.attrs["name"];
+  return typeof n === "string" ? n : (s.path.split("/").pop() ?? s.path);
+}
+
+/** 正準JSON — 機械形式。差分とレイヤー合成の土台 (キーは安定順) */
+export function toCanonical(model: Model): string {
+  const spaces: Record<string, unknown> = {};
+  for (const p of [...model.spaces.keys()].sort()) {
+    const s = model.spaces.get(p)!;
+    spaces[p] = {
+      type: s.type,
+      ...(s.grids.length === 1
+        ? { at: [s.grids[0]!.xa, s.grids[0]!.ya, s.grids[0]!.xb, s.grids[0]!.yb] }
+        : s.grids.length > 1
+          ? { at: s.grids.map((g) => [g.xa, g.ya, g.xb, g.yb]) }
+          : {}),
+      ...(Object.keys(s.attrs).length ? { attrs: sortObj(s.attrs) } : {}),
+      ...(s.areas.length
+        ? {
+            areas: s.areas.map((a) => ({
+              at: [a.grid.xa, a.grid.ya, a.grid.xb, a.grid.yb],
+              ...(Object.keys(a.attrs).length ? { attrs: sortObj(a.attrs) } : {}),
+            })),
+          }
+        : {}),
+    };
+  }
+  const boundaries = [...model.boundaries]
+    .map((b) => ({
+      between: [b.a, b.b].sort(),
+      kind: b.kind,
+      ...(b.t !== undefined ? { t: b.t } : {}),
+      ...(b.edge ? { edge: b.edge } : {}),
+      ...(Object.keys(b.attrs).length ? { attrs: sortObj(b.attrs) } : {}),
+      ...(b.openings.length
+        ? {
+            openings: b.openings.map((o) => ({
+              kind: o.kind,
+              w: o.w,
+              ...(o.h !== undefined ? { h: o.h } : {}),
+              at: o.at,
+              ...(o.edge ? { edge: o.edge } : {}),
+              ...(Object.keys(o.attrs).length ? { attrs: sortObj(o.attrs) } : {}),
+            })),
+          }
+        : {}),
+      ...(b.segs.length
+        ? {
+            segs: b.segs.map((g) => ({
+              w: g.w,
+              at: g.at,
+              ...(g.edge ? { edge: g.edge } : {}),
+              ...(Object.keys(g.attrs).length ? { attrs: sortObj(g.attrs) } : {}),
+            })),
+          }
+        : {}),
+    }))
+    .sort((x, y) => (x.between.join() < y.between.join() ? -1 : 1));
+
+  const zones: Record<string, unknown> = {};
+  for (const p of [...model.zones.keys()].sort()) {
+    const z = model.zones.get(p)!;
+    zones[p] = Object.keys(z.attrs).length ? { attrs: sortObj(z.attrs) } : {};
+  }
+
+  const doc = {
+    ifcxs: model.version,
+    ...(model.name ? { name: model.name } : {}),
+    unit: model.unit,
+    grid: { X: model.grid.X.coords, Y: model.grid.Y.coords },
+    levels: sortObj(
+      Object.fromEntries(
+        Object.entries(model.levels).map(([k, v]) => [
+          k,
+          {
+            z: v.z,
+            ...(v.h !== undefined ? { h: v.h } : {}),
+            ...(v.slab !== undefined ? { slab: v.slab } : {}),
+          },
+        ]),
+      ),
+    ),
+    ...(Object.keys(zones).length ? { zones } : {}),
+    spaces,
+    boundaries,
+  };
+  return JSON.stringify(doc, null, 2) + "\n";
+}
+
+function sortObj<T>(o: Record<string, T>): Record<string, T> {
+  return Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : 1)));
+}
