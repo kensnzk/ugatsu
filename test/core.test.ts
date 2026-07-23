@@ -6,6 +6,7 @@ import {
   check,
   doorsBetween,
   parse,
+  parseFiles,
   segmentsFor,
   siteReport,
   svgPlan,
@@ -74,6 +75,51 @@ describe("koyuパッケージ", () => {
     expect(json.koyu).toBe("0.1");
     expect(Object.keys(json.spaces).length).toBe(m.spaces.size);
     expect(svgPlan(m, { level: "L1" })).toContain("</svg>");
+  });
+});
+
+describe("合成 (koyu ADR-0010 — v0.6)", () => {
+  const HOUSE_LAYERS = [
+    "main.muro",
+    "assets.muro",
+    "site.muro",
+    "L1.muro",
+    "L2.muro",
+  ] as const;
+  const loadLayers = () =>
+    Object.fromEntries(
+      HOUSE_LAYERS.map((f) => [f, readFileSync(`examples/house/${f}`, "utf8")]),
+    );
+
+  it("5レイヤーの戸建がブラウザと同じ経路 (parseFiles) で合成され整合する", () => {
+    const m = parseFiles(loadLayers(), "main.muro");
+    expect(check(m).errors).toEqual([]);
+    expect(m.spaces.size).toBe(13);
+    expect(zoneAreaM2(m, "/home")).toBeCloseTo(92.75, 2); // 単一ファイル版と同じ答え
+    expect(m.spaces.get("/home/ldk")!.file).toBe("L1.muro"); // 出所レイヤー
+  });
+
+  it("建具アセット: 引き戸SD1の参照がstyleと寸法を運ぶ", () => {
+    const m = parseFiles(loadLayers(), "main.muro");
+    const b = m.boundaries.find((x) => x.a === "/home/ldk" && x.b === "/home/hall1")!;
+    expect(b.openings[0]!.ref).toBe("SD1");
+    expect(b.openings[0]!.attrs["style"]).toBe("sliding");
+    expect(b.openings[0]!.w).toBe(800);
+  });
+
+  it("コンフリクト: 別レイヤーの空間パス重複は出所つきで落ちる", () => {
+    const files = loadLayers();
+    files["L2.muro"] += "\nspace /home/ldk room X1..X2 Y1..Y3 level:L2\n";
+    expect(() => parseFiles(files, "main.muro")).toThrowError(/L2\.muro.*空間パスが重複.*L1\.muro/s);
+  });
+
+  it("checkエラーも出所レイヤーつき (壁からのはみ出し)", () => {
+    const files = loadLayers();
+    files["L1.muro"] = files["L1.muro"]!.replace("at:Y2+1820", "at:Y2+3500");
+    const m = parseFiles(files, "main.muro");
+    const errs = check(m).errors;
+    expect(errs.length).toBeGreaterThan(0);
+    expect(errs[0]).toMatch(/^L1\.muro:\d+行目.*はみ出します/);
   });
 });
 

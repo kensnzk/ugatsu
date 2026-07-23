@@ -15,9 +15,19 @@ const pkgJson = require.resolve("@kensnzk/koyu/package.json");
 const src = join(dirname(pkgJson), "examples");
 
 mkdirSync(join(root, "examples"), { recursive: true });
-for (const f of readdirSync(src)) {
-  if (!f.endsWith(".muro")) continue;
-  copyFileSync(join(src, f), join(root, "examples", f));
-  console.log(`example ← ${f}`);
+for (const e of readdirSync(src, { withFileTypes: true })) {
+  if (e.isDirectory()) {
+    // 合成の例 (examples/house/ など) はディレクトリごと追随する
+    mkdirSync(join(root, "examples", e.name), { recursive: true });
+    for (const f of readdirSync(join(src, e.name))) {
+      if (!f.endsWith(".muro")) continue;
+      copyFileSync(join(src, e.name, f), join(root, "examples", e.name, f));
+      console.log(`example ← ${e.name}/${f}`);
+    }
+    continue;
+  }
+  if (!e.name.endsWith(".muro")) continue;
+  copyFileSync(join(src, e.name), join(root, "examples", e.name));
+  console.log(`example ← ${e.name}`);
 }
 console.log("done.");

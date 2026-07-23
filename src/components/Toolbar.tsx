@@ -12,7 +12,9 @@ const VIEWS: Array<[MainView, string]> = [
 ];
 
 export function Toolbar() {
-  const fileName = useViewer((s) => s.fileName);
+  const files = useViewer((s) => s.files);
+  const entry = useViewer((s) => s.entry);
+  const activeFile = useViewer((s) => s.activeFile);
   const model = useViewer((s) => s.model);
   const source = useViewer((s) => s.source);
   const parseError = useViewer((s) => s.parseError);
@@ -23,11 +25,13 @@ export function Toolbar() {
   const setMainView = useViewer((s) => s.setMainView);
   const setColorMode = useViewer((s) => s.setColorMode);
   const setSource = useViewer((s) => s.setSource);
+  const setFiles = useViewer((s) => s.setFiles);
   const toggleEditor = useViewer((s) => s.toggleEditor);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const base = fileName.replace(/\.muro$/, "");
+  const layerCount = Object.keys(files).length;
+  const base = entry.replace(/\.muro$/, "");
 
   async function openFile(f: File) {
     setSource(await f.text(), f.name);
@@ -38,7 +42,10 @@ export function Toolbar() {
       <div className="brand">
         <strong>ugatsu</strong>
         <span className={`status-dot ${parseError ? "bad" : "good"}`} title={parseError ? "パースエラー" : "整合"} />
-        <span className="file-name">{fileName}</span>
+        <span className="file-name">
+          {entry}
+          {layerCount > 1 && <span className="layer-count"> +{layerCount - 1}層</span>}
+        </span>
       </div>
 
       <select
@@ -46,7 +53,7 @@ export function Toolbar() {
         value=""
         onChange={(e) => {
           const ex = EXAMPLES.find((x) => x.key === e.target.value);
-          if (ex) setSource(ex.source, ex.fileName);
+          if (ex) setFiles(ex.files, ex.entry);
         }}
       >
         <option value="">例を開く…</option>
@@ -77,7 +84,9 @@ export function Toolbar() {
         </button>
         {menuOpen && (
           <div className="menu panel" onClick={() => setMenuOpen(false)}>
-            <button onClick={() => downloadText(fileName, source)}>ソース (.muro)</button>
+            <button onClick={() => downloadText(activeFile, source)}>
+              ソース ({layerCount > 1 ? activeFile : ".muro"})
+            </button>
             <button onClick={() => model && downloadText(`${base}.canonical.json`, toCanonical(model), "application/json")} disabled={!model}>
               正準JSON
             </button>
@@ -93,7 +102,7 @@ export function Toolbar() {
             {import.meta.env.PROD && (
               <button
                 onClick={() => {
-                  if (!exportEmbeddedHtml(source, fileName)) {
+                  if (!exportEmbeddedHtml(files, entry)) {
                     alert("配布用HTMLの生成に失敗しました");
                   }
                 }}

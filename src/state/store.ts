@@ -1,10 +1,12 @@
 // ビューワーの状態 — 原本はソーステキスト。モデルはその導出物であり、
 // すべての編集は (将来のGUIオーサリングも含め) テキストへの操作として設計する。
+// v0.2: 原本は一枚のテキストからレイヤー群 (files+entry) になった (koyu ADR-0010)。
+// 各レイヤーは分担の単位で、合成 (parseFiles) のコンフリクトは出所つきのエラーになる。
 import { create } from "zustand";
 import {
   check,
   doorsBetween,
-  parse,
+  parseFiles,
   SourceError,
   type Model,
   type Route,
@@ -25,16 +27,29 @@ export function levelsWithRooms(model: Model): string[] {
     .map((l) => l.name);
 }
 
+export interface ParseErrorInfo {
+  /** どのレイヤーのエラーか (合成時のみ) */
+  file?: string;
+  line: number;
+  message: string;
+}
+
 export interface ViewerState {
+  /** レイヤー群 — ファイル名 → ソース。単一ファイルは1枚 */
+  files: Record<string, string>;
+  /** base層 (合成の入口) */
+  entry: string;
+  /** エディタが開いているレイヤー */
+  activeFile: string;
+  /** activeFile の中身 (エディタ用の派生値) */
   source: string;
-  fileName: string;
   /** 最後にパースに成功したモデル (編集エラー中も表示は保つ) */
   model: Model | null;
   /** パース成功のたびに増える (シーン再構築の合図) */
   modelKey: number;
   /** カメラをフィットし直す合図 (ファイル切替のたびに変わる) */
   fitKey: string;
-  parseError: { line: number; message: string } | null;
+  parseError: ParseErrorInfo | null;
   checkErrors: string[];
   checkWarnings: string[];
 
@@ -54,7 +69,13 @@ export interface ViewerState {
   routeTarget: string | null;
   route: Route | "unreachable" | null;
 
+  /** 単一ファイルを開く (ドロップ・開く・埋め込み) */
   setSource(src: string, fileName?: string): void;
+  /** レイヤー群を開く (合成の例・複数ファイルの埋め込み) */
+  setFiles(files: Record<string, string>, entry: string): void;
+  /** エディタからの編集 — activeFile だけを書き換えて再合成 */
+  editActive(src: string): void;
+  setActiveFile(name: string): void;
   setMainView(v: MainView): void;
   setColorMode(m: ColorMode): void;
   setPlanLevel(l: string): void;
@@ -79,97 +100,127 @@ function computeRoute(
   return doorsBetween(model, from, to) ?? "unreachable";
 }
 
-export const useViewer = create<ViewerState>()((set, get) => ({
-  source: "",
-  fileName: "untitled.muro",
-  model: null,
-  modelKey: 0,
-  fitKey: "",
-  parseError: null,
-  checkErrors: [],
-  checkWarnings: [],
-
-  mainView: "plan",
-  colorMode: "use",
-  planLevel: null,
-  hiddenLevels: {},
-  stackMode: false,
-  spread: 1,
-  showWalls: true,
-  showOpenings: true,
-  showEditor: true,
-
-  selected: null,
-  hovered: null,
-  routeTarget: null,
-  route: null,
-
-  setSource(src, fileName) {
+export const useViewer = create<ViewerState>()((set, get) => {
+  /** files+entry から再合成し、状態に反映する。fresh=true はファイル切替 (ビューをリセット) */
+  function recompose(files: Record<string, string>, entry: string, activeFile: string, fresh: boolean) {
     const st = get();
-    const nextFile = fileName ?? st.fileName;
+    const base = {
+      files,
+      entry,
+      activeFile,
+      source: files[activeFile] ?? "",
+    };
     try {
-      const model = parse(src);
+      const model = parseFiles(files, entry);
       const { errors, warnings } = check(model);
       const levels = levelsWithRooms(model);
       const planLevel =
-        st.planLevel && levels.includes(st.planLevel) ? st.planLevel : (levels[0] ?? null);
+        !fresh && st.planLevel && levels.includes(st.planLevel)
+          ? st.planLevel
+          : (levels[0] ?? null);
       const selected = st.selected && model.spaces.has(st.selected) ? st.selected : null;
       const routeTarget =
         st.routeTarget && model.spaces.has(st.routeTarget) ? st.routeTarget : null;
       set({
-        source: src,
-        fileName: nextFile,
+        ...base,
         model,
         modelKey: st.modelKey + 1,
-        fitKey: nextFile,
+        fitKey: fresh ? entry + String(st.modelKey) : st.fitKey,
         parseError: null,
         checkErrors: errors,
         checkWarnings: warnings,
         planLevel,
-        hiddenLevels: fileName !== undefined && fileName !== st.fileName ? {} : st.hiddenLevels,
+        hiddenLevels: fresh ? {} : st.hiddenLevels,
         selected,
         routeTarget,
         route: computeRoute(model, selected, routeTarget),
       });
     } catch (e) {
       if (e instanceof SourceError) {
-        set({ source: src, fileName: nextFile, parseError: { line: e.line, message: e.message } });
+        set({
+          ...base,
+          parseError: { line: e.line, message: e.message, ...(e.file ? { file: e.file } : {}) },
+        });
       } else {
         set({
-          source: src,
-          fileName: nextFile,
+          ...base,
           parseError: { line: 0, message: e instanceof Error ? e.message : String(e) },
         });
       }
     }
-  },
+  }
 
-  setMainView: (mainView) => set({ mainView }),
-  setColorMode: (colorMode) => set({ colorMode }),
-  setPlanLevel: (planLevel) => set({ planLevel }),
-  toggleLevelHidden(l) {
-    const hidden = { ...get().hiddenLevels };
-    if (hidden[l]) delete hidden[l];
-    else hidden[l] = true;
-    set({ hiddenLevels: hidden });
-  },
-  showAllLevels: () => set({ hiddenLevels: {} }),
-  setStackMode: (stackMode) => set({ stackMode }),
-  setSpread: (spread) => set({ spread }),
-  setShowWalls: (showWalls) => set({ showWalls }),
-  setShowOpenings: (showOpenings) => set({ showOpenings }),
-  toggleEditor: () => set((s) => ({ showEditor: !s.showEditor })),
+  return {
+    files: {},
+    entry: "untitled.muro",
+    activeFile: "untitled.muro",
+    source: "",
+    model: null,
+    modelKey: 0,
+    fitKey: "",
+    parseError: null,
+    checkErrors: [],
+    checkWarnings: [],
 
-  select(path) {
-    const st = get();
-    set({ selected: path, route: computeRoute(st.model, path, st.routeTarget) });
-  },
-  hover: (hovered) => set({ hovered }),
-  setRouteTarget(path) {
-    const st = get();
-    set({ routeTarget: path, route: computeRoute(st.model, st.selected, path) });
-  },
-}));
+    mainView: "plan",
+    colorMode: "use",
+    planLevel: null,
+    hiddenLevels: {},
+    stackMode: false,
+    spread: 1,
+    showWalls: true,
+    showOpenings: true,
+    showEditor: true,
+
+    selected: null,
+    hovered: null,
+    routeTarget: null,
+    route: null,
+
+    setSource(src, fileName) {
+      const name = fileName ?? get().entry;
+      recompose({ [name]: src }, name, name, fileName !== undefined);
+    },
+    setFiles(files, entry) {
+      recompose(files, entry, entry, true);
+    },
+    editActive(src) {
+      const st = get();
+      recompose({ ...st.files, [st.activeFile]: src }, st.entry, st.activeFile, false);
+    },
+    setActiveFile(name) {
+      const st = get();
+      if (!(name in st.files)) return;
+      set({ activeFile: name, source: st.files[name]! });
+    },
+
+    setMainView: (mainView) => set({ mainView }),
+    setColorMode: (colorMode) => set({ colorMode }),
+    setPlanLevel: (planLevel) => set({ planLevel }),
+    toggleLevelHidden(l) {
+      const hidden = { ...get().hiddenLevels };
+      if (hidden[l]) delete hidden[l];
+      else hidden[l] = true;
+      set({ hiddenLevels: hidden });
+    },
+    showAllLevels: () => set({ hiddenLevels: {} }),
+    setStackMode: (stackMode) => set({ stackMode }),
+    setSpread: (spread) => set({ spread }),
+    setShowWalls: (showWalls) => set({ showWalls }),
+    setShowOpenings: (showOpenings) => set({ showOpenings }),
+    toggleEditor: () => set((s) => ({ showEditor: !s.showEditor })),
+
+    select(path) {
+      const st = get();
+      set({ selected: path, route: computeRoute(st.model, path, st.routeTarget) });
+    },
+    hover: (hovered) => set({ hovered }),
+    setRouteTarget(path) {
+      const st = get();
+      set({ routeTarget: path, route: computeRoute(st.model, st.selected, path) });
+    },
+  };
+});
 
 /** 経路ハイライト対象の空間パス集合 */
 export function routePaths(route: Route | "unreachable" | null): Set<string> {

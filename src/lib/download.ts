@@ -35,19 +35,29 @@ export function decodeBase64(b64: string): string {
  * いま開いているモデルを埋め込んだ配布用HTMLを書き出す (MUN-143)。
  * ビューワー自体が単一HTMLなので、素のHTMLの embed スクリプトに
  * ソースを注入するだけで「一つのファイルとして閲覧できる図面」になる。
+ * レイヤー群 (合成 — koyu ADR-0010) はそのままJSONで埋め、開いた側でも分担が見える。
  * dev サーバー上では素のHTMLがバンドルを含まないため無効。
  */
-export function exportEmbeddedHtml(source: string, fileName: string): boolean {
+export function exportEmbeddedHtml(files: Record<string, string>, entry: string): boolean {
   if (!pristineHtml || !import.meta.env.PROD) return false;
-  const b64 = encodeBase64(source);
+  const names = Object.keys(files);
+  const single = names.length === 1;
+  const b64 = single
+    ? encodeBase64(files[entry] ?? "")
+    : encodeBase64(JSON.stringify({ entry, files }));
   const re = /(<script[^>]*id="muro-embed"[^>]*>)([\s\S]*?)(<\/script>)/;
   if (!re.test(pristineHtml)) return false;
   const html = pristineHtml.replace(
     re,
     (_m, open: string, _body: string, close: string) =>
-      open.replace(/\s*data-name="[^"]*"/, "").replace(">", ` data-name="${fileName}">`) + b64 + close,
+      open
+        .replace(/\s*data-name="[^"]*"/, "")
+        .replace(/\s*data-format="[^"]*"/, "")
+        .replace(">", ` data-name="${entry}"${single ? "" : ' data-format="files"'}>`) +
+      b64 +
+      close,
   );
-  const out = fileName.replace(/\.muro$/, "") + ".ugatsu.html";
+  const out = entry.replace(/\.muro$/, "") + ".ugatsu.html";
   downloadText(out, html, "text/html");
   return true;
 }

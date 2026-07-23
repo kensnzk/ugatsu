@@ -11,6 +11,7 @@ export function App() {
   const mainView = useViewer((s) => s.mainView);
   const showEditor = useViewer((s) => s.showEditor);
   const setSource = useViewer((s) => s.setSource);
+  const setFiles = useViewer((s) => s.setFiles);
   const [dropping, setDropping] = useState(false);
 
   // .muro のドラッグ&ドロップ
@@ -30,10 +31,18 @@ export function App() {
       e.preventDefault();
       depth = 0;
       setDropping(false);
-      const f = e.dataTransfer?.files?.[0];
-      if (f && /\.(muro|txt)$/.test(f.name)) {
-        void f.text().then((text) => setSource(text, f.name));
+      const list = [...(e.dataTransfer?.files ?? [])].filter((f) => /\.(muro|txt)$/.test(f.name));
+      if (list.length === 0) return;
+      if (list.length === 1) {
+        void list[0]!.text().then((text) => setSource(text, list[0]!.name));
+        return;
       }
+      // 複数ファイル: レイヤー群として合成。entryは import を持つファイル (無ければ先頭)
+      void Promise.all(list.map(async (f) => [f.name, await f.text()] as const)).then((pairs) => {
+        const files = Object.fromEntries(pairs);
+        const entry = pairs.find(([, t]) => /^import\s/m.test(t))?.[0] ?? pairs[0]![0];
+        setFiles(files, entry);
+      });
     };
     window.addEventListener("dragenter", onDragEnter);
     window.addEventListener("dragleave", onDragLeave);
@@ -45,7 +54,7 @@ export function App() {
       window.removeEventListener("dragover", onDragOver);
       window.removeEventListener("drop", onDrop);
     };
-  }, [setSource]);
+  }, [setSource, setFiles]);
 
   return (
     <div className="app">
@@ -64,7 +73,7 @@ export function App() {
         </main>
         <Inspector />
       </div>
-      {dropping && <div className="drop-overlay">.muro をドロップして開く</div>}
+      {dropping && <div className="drop-overlay">.muro をドロップして開く (複数ならレイヤー合成)</div>}
     </div>
   );
 }

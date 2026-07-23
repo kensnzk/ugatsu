@@ -8,7 +8,7 @@ import { routePaths, useViewer } from "../state/store.js";
 export function AreaTable() {
   const model = useViewer((s) => s.model);
   const modelKey = useViewer((s) => s.modelKey);
-  const fileName = useViewer((s) => s.fileName);
+  const fileName = useViewer((s) => s.entry);
   const selected = useViewer((s) => s.selected);
   const route = useViewer((s) => s.route);
   const select = useViewer((s) => s.select);

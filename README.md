@@ -8,14 +8,15 @@ The name 鑿つ/穿つ (*ugatsu*, "to bore through") follows koyu (戸牖, "door
 
 ## What it does
 
-- **Load** — open `.muro` files by drag & drop or file picker. Ships with koyu's examples (two rooms, a two-storey office with an atrium, a small house with site and roads, a 10-storey apartment building with 43 units).
+- **Load** — open `.muro` files by drag & drop or file picker; dropping several files at once opens them as composed layers. Ships with koyu's examples (two rooms, a two-storey office with an atrium, a small house with site and roads, **the same house composed from 5 files**, a 10-storey apartment building with 43 units).
 - **Edit** — the left pane is a text editor. Every keystroke re-parses, re-checks and regenerates every view. On a parse error the viewer shows the line and keeps the last consistent model. The text is the original; everything else is derived.
+- **Composition (koyu ADR-0010)** — layers split by `import` are edited as tabs (◈ marks the base layer). Composition runs through koyu's `parseFiles`; conflicts (duplicate paths or asset names) and opening-overflow checks report the source layer and line, and clicking an error jumps to that tab. Door/window assets (`asset`, with sliding/auto `style`) drive the plan symbols.
 - **Plan** — an interactive port of koyu's `plan` drawing conventions: grid lines, centre-line walls, door swings, void diagonals, railings as thin lines, semi-outdoor tinting. Click a space to select it; wheel to zoom.
 - **3D** — spaces extruded to their ceiling heights, walls generated from boundaries with thickness, doors and windows on wall faces, railings at waist height. Colour by use / type / level; per-level visibility.
 - **2.5D stack** — floor plates lifted by real height × an expansion factor. A void has no plate: the absence of floor appears as a hole, which is exactly what a void is.
 - **Area schedule** — per-level space lists with subtotals, zone aggregation (exclusive-area sums), use ratios, per-type totals, CSV export. Site report (site area declared vs derived, building footprint, road frontage) when the model has a site.
 - **Graph** — select a space to see its neighbours (boundary kind, doors, fire rating). "How many doors from here to there?" is answered by `doorsBetween`, with the route highlighted on the plan.
-- **Export** — source, canonical JSON, plan SVG, area CSV, and a **self-contained HTML file with the model embedded** — one file that anyone can open in a browser, no install.
+- **Export** — source, canonical JSON, plan SVG, area CSV, and a **self-contained HTML file with the model embedded** — one file that anyone can open in a browser, no install. Layered models embed as layers, so the division of labour survives the hand-off.
 
 ## Usage
 
