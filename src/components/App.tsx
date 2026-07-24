@@ -1,18 +1,46 @@
 import { useEffect, useState } from "react";
-import { useViewer } from "../state/store.js";
+import { Tabs } from "../lib/ds.js";
+import { useViewer, type MainView } from "../state/store.js";
 import { AreaTable } from "./AreaTable.js";
 import { EditorPane } from "./EditorPane.js";
 import { Inspector } from "./Inspector.js";
 import { PlanView } from "./PlanView.js";
 import { Scene3D } from "./Scene3D.js";
 import { Toolbar } from "./Toolbar.js";
+import { RoundIcon } from "./ui.js";
+
+const VIEW_ITEMS: Array<{ value: MainView; label: string }> = [
+  { value: "plan", label: "平面" },
+  { value: "3d", label: "3D" },
+  { value: "table", label: "面積表" },
+];
 
 export function App() {
   const mainView = useViewer((s) => s.mainView);
+  const setMainView = useViewer((s) => s.setMainView);
   const showEditor = useViewer((s) => s.showEditor);
+  const showInspector = useViewer((s) => s.showInspector);
+  const inspectorWidth = useViewer((s) => s.inspectorWidth);
+  const setInspectorWidth = useViewer((s) => s.setInspectorWidth);
+  const toggleEditor = useViewer((s) => s.toggleEditor);
+  const toggleInspector = useViewer((s) => s.toggleInspector);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
   const [dropping, setDropping] = useState(false);
+
+  // プロパティパネルの左端ドラッグでリサイズ
+  function startInspectorResize(e: React.PointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = inspectorWidth;
+    const move = (ev: PointerEvent) => setInspectorWidth(startW + (startX - ev.clientX));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   // .muro のドラッグ&ドロップ
   useEffect(() => {
@@ -59,8 +87,11 @@ export function App() {
   return (
     <div className="app">
       <Toolbar />
-      <div className={`body ${showEditor ? "with-editor" : ""}`}>
-        {showEditor && <EditorPane />}
+      {/* キャンバスが主面。両サイドはその上に浮かぶ開閉可能なパネル */}
+      <div
+        className={`body ${showEditor ? "with-editor" : ""} ${showInspector ? "with-inspector" : ""}`}
+        style={{ "--inspector-w": `${inspectorWidth}px` } as React.CSSProperties}
+      >
         <main className="main">
           {/* 3Dはタブ切替でもWebGLコンテキストを保つため display 切替 */}
           <div className="view-slot" style={{ display: mainView === "plan" ? "contents" : "none" }}>
@@ -71,7 +102,40 @@ export function App() {
           </div>
           {mainView === "table" && <AreaTable />}
         </main>
-        <Inspector />
+        {/* ビュー切替 — キャンバス上のセグメント */}
+        <div className="view-switch">
+          <Tabs
+            variant="segmented"
+            items={VIEW_ITEMS}
+            value={mainView}
+            onChange={(v: string) => setMainView(v as MainView)}
+          />
+        </div>
+        {showEditor ? (
+          <div className="side side-left">
+            <EditorPane />
+            <div className="side-close">
+              <RoundIcon icon="pin-left" label="エディタを閉じる" onClick={toggleEditor} />
+            </div>
+          </div>
+        ) : (
+          <div className="side-reopen side-reopen-left">
+            <RoundIcon icon="pin-right" label="エディタを開く" variant="outline" onClick={toggleEditor} />
+          </div>
+        )}
+        {showInspector ? (
+          <div className="side side-right" style={{ width: inspectorWidth }}>
+            <div className="side-resize" onPointerDown={startInspectorResize} />
+            <Inspector />
+            <div className="side-close">
+              <RoundIcon icon="pin-right" label="プロパティを閉じる" onClick={toggleInspector} />
+            </div>
+          </div>
+        ) : (
+          <div className="side-reopen side-reopen-right">
+            <RoundIcon icon="pin-left" label="プロパティを開く" variant="outline" onClick={toggleInspector} />
+          </div>
+        )}
       </div>
       {dropping && <div className="drop-overlay">.muro をドロップして開く (複数ならレイヤー合成)</div>}
     </div>

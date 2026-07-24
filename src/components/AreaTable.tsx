@@ -2,6 +2,7 @@
 // この表は koyu の一次要素の一覧そのものになる (MUN-144)。
 import { useMemo } from "react";
 import { computeStats, statsToCsv } from "../lib/stats.js";
+import { Button } from "../lib/ds.js";
 import { downloadText } from "../lib/download.js";
 import { routePaths, useViewer } from "../state/store.js";
 
@@ -23,14 +24,15 @@ export function AreaTable() {
         <h2>
           面積表 <span className="muted">{model.name ?? ""} ・ 壁芯 ・ ㎡</span>
         </h2>
-        <button
-          className="mini"
+        <Button
+          size="sm"
+          icon="download"
           onClick={() =>
             downloadText(fileName.replace(/\.muro$/, "") + ".areas.csv", statsToCsv(stats, model.name ?? fileName), "text/csv")
           }
         >
           CSV書き出し
-        </button>
+        </Button>
       </div>
 
       <table>

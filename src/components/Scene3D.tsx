@@ -3,11 +3,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { areaM2, displayName } from "@kensnzk/koyu";
-import { buildColors, SELECT_COLOR, ROUTE_COLOR } from "../lib/colors.js";
+import { buildColors, routeColor, selectColor } from "../lib/colors.js";
+import { Button, Checkbox, Slider, Switch } from "../lib/ds.js";
 import { tokenColor } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
+import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
+import { RoundIcon } from "./ui.js";
 
 export function Scene3D() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -17,10 +20,19 @@ export function Scene3D() {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     raycaster: THREE.Raycaster;
+    grid: THREE.GridHelper;
+    hemi: THREE.HemisphereLight;
+    /** 再描画の要求 — 変化があったときだけ描く (アイドル時のGPU負荷ゼロ) */
+    invalidate: () => void;
     built: BuiltScene | null;
   } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; path: string } | null>(null);
   const [glError, setGlError] = useState(false);
+  // コンテキスト喪失中 (three標準の復帰待ち)。自動で作り直さない —
+  // 喪失→即再作成のループはGPUプロセスを落とし、ブラウザ全体のWebGL無効化を招く
+  const [glLost, setGlLost] = useState(false);
+  // 手動再試行の合図 (復帰が来ないときにユーザー操作でのみ作り直す)
+  const [glRetry, setGlRetry] = useState(0);
 
   const model = useViewer((s) => s.model);
   const modelKey = useViewer((s) => s.modelKey);
@@ -34,6 +46,8 @@ export function Scene3D() {
   const selected = useViewer((s) => s.selected);
   const hovered = useViewer((s) => s.hovered);
   const route = useViewer((s) => s.route);
+  const theme = useViewer((s) => s.theme);
+  const mainView = useViewer((s) => s.mainView);
   const select = useViewer((s) => s.select);
   const hover = useViewer((s) => s.hover);
   const setStackMode = useViewer((s) => s.setStackMode);
@@ -55,7 +69,7 @@ export function Scene3D() {
     if (!host) return;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     } catch (err) {
       // GPU無効環境 (アクセラレーション停止など) ではコンテキストが作れない
       console.error("WebGL初期化に失敗:", err);
@@ -65,12 +79,28 @@ export function Scene3D() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(tokenColor("--bg-canvas"));
     host.appendChild(renderer.domElement);
+    // コンテキスト喪失時はthree標準の復帰 (contextrestored) を待つだけ。
+    // 作り直しはしない — ここで再作成ループを作るとGPUプロセスごと落ちる
+    const onContextLost = () => {
+      console.warn("WebGLコンテキスト喪失 — 復帰を待ちます");
+      setGlLost(true);
+    };
+    const onContextRestored = () => {
+      console.info("WebGLコンテキスト復帰");
+      // threeは復帰時に内部モジュールを作り直し clearColor が黒に戻る — 再適用する
+      renderer.setClearColor(tokenColor("--bg-canvas"));
+      setGlLost(false);
+      worldRef.current?.invalidate();
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onContextLost);
+    renderer.domElement.addEventListener("webglcontextrestored", onContextRestored);
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05)); // ds:allow 白色光 (物理値)
+    const hemi = new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05); // ds:allow 白色光 (物理値)
+    scene.add(hemi);
     const dir = new THREE.DirectionalLight(0xffffff, 0.85); // ds:allow 白色光 (物理値)
     dir.position.set(30, 60, 40);
     scene.add(dir);
-    const grid = new THREE.GridHelper(120, 120, tokenColor("--gray-200"), tokenColor("--gray-150"));
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--border-2"), tokenColor("--border-1"));
     grid.position.y = -0.02;
     scene.add(grid);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2000);
@@ -79,23 +109,41 @@ export function Scene3D() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
 
+    // オンデマンド描画: 変化 (操作・モデル・テーマ) があったフレームだけ描く。
+    // dampingの残りがある間は自走し、収まったら止まる — アイドル時のGPU負荷はゼロ
+    let raf = 0;
+    let rendering = false;
+    const frame = () => {
+      let moving = false;
+      try {
+        moving = controls.update();
+        renderer.render(scene, camera);
+      } finally {
+        // 例外でもフラグを固めない (以後のinvalidateが効かなくなるのを防ぐ)
+        if (moving) raf = requestAnimationFrame(frame);
+        else rendering = false;
+      }
+    };
+    const invalidate = () => {
+      if (rendering) return;
+      rendering = true;
+      raf = requestAnimationFrame(frame);
+    };
+    controls.addEventListener("change", invalidate);
+
     const world: NonNullable<typeof worldRef.current> = {
       renderer,
       scene,
       camera,
       controls,
       raycaster: new THREE.Raycaster(),
+      grid,
+      hemi,
+      invalidate,
       built: null,
     };
     worldRef.current = world;
-
-    let raf = 0;
-    const loop = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
-    };
-    loop();
+    setGlLost(false);
 
     const resize = () => {
       const w = host.clientWidth;
@@ -104,6 +152,7 @@ export function Scene3D() {
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      invalidate();
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -112,13 +161,40 @@ export function Scene3D() {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      controls.removeEventListener("change", invalidate);
       controls.dispose();
       if (world.built) disposeGroup(world.built.group);
+      renderer.domElement.removeEventListener("webglcontextlost", onContextLost);
+      renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored);
       renderer.dispose();
+      // GLコンテキストを即時解放する (GCまかせだと再マウントの繰返しで
+      // コンテキスト上限に達し、ChromeのGPUプロセスを巻き込みやすい)
+      renderer.forceContextLoss();
       host.removeChild(renderer.domElement);
       worldRef.current = null;
     };
-  }, []);
+  }, [glRetry]);
+
+  // 3Dタブへ戻ったとき・復帰したときに一度描く (以後は変化駆動)
+  useEffect(() => {
+    if (mainView === "3d" && !glLost) worldRef.current?.invalidate();
+  }, [mainView, glLost, glRetry]);
+
+  // テーマ切替 — 机・地面色・グリッドを新トークンで作り直す
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    world.renderer.setClearColor(tokenColor("--bg-canvas"));
+    world.hemi.groundColor.set(tokenColor("--gray-300"));
+    world.scene.remove(world.grid);
+    world.grid.geometry.dispose();
+    (world.grid.material as THREE.Material).dispose();
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--border-2"), tokenColor("--border-1"));
+    grid.position.y = -0.02;
+    world.scene.add(grid);
+    world.grid = grid;
+    world.invalidate();
+  }, [theme]);
 
   // モデル / 表示設定の変化でシーンを組み直す
   useEffect(() => {
@@ -129,7 +205,10 @@ export function Scene3D() {
       disposeGroup(world.built.group);
       world.built = null;
     }
-    if (!model || !colors) return;
+    if (!model || !colors) {
+      world.invalidate();
+      return;
+    }
     const built = buildScene(model, {
       colors,
       stackMode,
@@ -142,13 +221,13 @@ export function Scene3D() {
     world.built = built;
     applyHighlights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels]);
+  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels, theme, glRetry]);
 
   // カメラフィット (ファイル切替・モード切替のとき)
   useEffect(() => {
     fit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey, stackMode, spread]);
+  }, [fitKey, stackMode, spread, glRetry]);
 
   function fit() {
     const world = worldRef.current;
@@ -161,6 +240,7 @@ export function Scene3D() {
     world.controls.target.copy(center);
     world.camera.position.set(center.x + radius, center.y + radius * 0.85, center.z + radius);
     world.camera.updateProjectionMatrix();
+    world.invalidate();
   }
 
   function applyHighlights() {
@@ -171,14 +251,15 @@ export function Scene3D() {
       const mat = m.material as THREE.MeshLambertMaterial;
       if (!mat.emissive) continue;
       const path = m.userData.path as string;
-      if (path === selected) mat.emissive.set(SELECT_COLOR);
-      else if (onRoute.has(path)) mat.emissive.set(ROUTE_COLOR);
-      else if (path === hovered) mat.emissive.set(tokenColor("--gray-600"));
+      if (path === selected) mat.emissive.set(selectColor());
+      else if (onRoute.has(path)) mat.emissive.set(routeColor());
+      else if (path === hovered) mat.emissive.set(tokenColor("--text-3"));
       else mat.emissive.set(0x000000); // ds:allow 発光オフ (物理値)
       mat.emissiveIntensity = path === selected ? 0.5 : 0.35;
     }
+    world.invalidate();
   }
-  useEffect(applyHighlights, [selected, hovered, route, modelKey, stackMode]);
+  useEffect(applyHighlights, [selected, hovered, route, modelKey, stackMode, theme]);
 
   // ピッキング
   function pick(ev: React.PointerEvent): string | null {
@@ -203,10 +284,19 @@ export function Scene3D() {
         <div className="scene3d-fallback panel">
           <strong>3D表示を初期化できませんでした</strong>
           <span>
-            ブラウザでWebGLが利用できません。ハードウェアアクセラレーションを有効にして
-            ブラウザを再起動してください (Chromeは chrome://gpu で状態を確認できます)。
-            平面・表・エディタはそのまま使えます。
+            ブラウザでWebGLが利用できません。GPUプロセスが落ちた直後なら再試行で直ることがあります。
+            直らない場合はChromeの再起動が必要です (chrome://gpu で状態確認・ハードウェア
+            アクセラレーションが有効か確認)。平面・表・エディタはそのまま使えます。
           </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              setGlError(false);
+              setGlRetry((n) => n + 1);
+            }}
+          >
+            再試行
+          </Button>
         </div>
       </div>
     );
@@ -235,71 +325,68 @@ export function Scene3D() {
           if (d && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) select(pick(ev));
         }}
       />
-      <div className="scene3d-controls panel">
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={stackMode}
-            onChange={(e) => setStackMode(e.target.checked)}
-          />
-          2.5D 重ね
-        </label>
-        {stackMode ? (
-          <label className="slider">
-            展開 ×{spread.toFixed(1)}
-            <input
-              type="range"
-              min={1}
-              max={5}
-              step={0.5}
-              value={spread}
-              onChange={(e) => setSpread(Number(e.target.value))}
-            />
-          </label>
-        ) : (
-          <>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showWalls}
-                onChange={(e) => setShowWalls(e.target.checked)}
-              />
-              壁
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showOpenings}
-                onChange={(e) => setShowOpenings(e.target.checked)}
-                disabled={!showWalls}
-              />
-              開口
-            </label>
-          </>
-        )}
-        <button className="mini" onClick={fit}>
-          フィット
-        </button>
-      </div>
-      {levels.length > 1 && (
-        <div className="scene3d-levels panel">
-          {levels.map((l) => (
-            <button
-              key={l}
-              className={`chip ${hiddenLevels[l] ? "chip-off" : ""}`}
-              onClick={() => toggleLevelHidden(l)}
-              title={hiddenLevels[l] ? `${l} を表示` : `${l} を隠す`}
-            >
-              {l}
-            </button>
-          ))}
-          {Object.keys(hiddenLevels).length > 0 && (
-            <button className="mini" onClick={showAllLevels}>
-              全表示
-            </button>
-          )}
+      {glLost && (
+        <div className="scene3d-fallback panel">
+          <strong>3Dの描画コンテキストが失われました</strong>
+          <span>ブラウザの復帰を待っています。戻らない場合は再試行してください。</span>
+          <Button
+            size="sm"
+            onClick={() => {
+              setGlLost(false);
+              setGlRetry((n) => n + 1);
+            }}
+          >
+            再試行
+          </Button>
         </div>
       )}
+      <div className="scene3d-controls">
+        <Dropdown icon="mixer-horizontal" label="表示設定">
+          <Switch size="sm" label="2.5D 重ね" checked={stackMode} onChange={(b: boolean) => setStackMode(b)} />
+          {stackMode ? (
+            <div className="spread-slider">
+              <Slider
+                min={1}
+                max={5}
+                step={0.5}
+                value={spread}
+                onChange={(n: number) => setSpread(n)}
+                label="展開"
+                showValue
+                unit="×"
+              />
+            </div>
+          ) : (
+            <>
+              <Checkbox label="壁" checked={showWalls} onChange={(b: boolean) => setShowWalls(b)} />
+              <Checkbox
+                label="開口"
+                checked={showOpenings}
+                onChange={(b: boolean) => setShowOpenings(b)}
+                disabled={!showWalls}
+              />
+            </>
+          )}
+        </Dropdown>
+        {levels.length > 1 && (
+          <Dropdown icon="layers" label="レベル表示">
+            {levels.map((l) => (
+              <Checkbox
+                key={l}
+                label={l}
+                checked={!hiddenLevels[l]}
+                onChange={() => toggleLevelHidden(l)}
+              />
+            ))}
+            {Object.keys(hiddenLevels).length > 0 && (
+              <Button size="sm" variant="ghost" onClick={showAllLevels}>
+                全表示
+              </Button>
+            )}
+          </Dropdown>
+        )}
+        <RoundIcon icon="frame" label="フィット" variant="outline" onClick={fit} />
+      </div>
       {colors && <Legend colors={colors} />}
       {tooltip && model && (
         <div className="tooltip" style={{ left: tooltip.x + 14, top: tooltip.y + 10 }}>

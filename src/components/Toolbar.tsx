@@ -2,14 +2,9 @@ import { useRef, useState } from "react";
 import { svgPlan, toCanonical } from "@kensnzk/koyu";
 import { EXAMPLES } from "../examples.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
-import type { ColorMode } from "../lib/colors.js";
-import { useViewer, type MainView } from "../state/store.js";
-
-const VIEWS: Array<[MainView, string]> = [
-  ["plan", "平面"],
-  ["3d", "3D"],
-  ["table", "面積表"],
-];
+import { useViewer } from "../state/store.js";
+import { Dropdown } from "./Dropdown.js";
+import { RoundIcon } from "./ui.js";
 
 export function Toolbar() {
   const files = useViewer((s) => s.files);
@@ -18,15 +13,11 @@ export function Toolbar() {
   const model = useViewer((s) => s.model);
   const source = useViewer((s) => s.source);
   const parseError = useViewer((s) => s.parseError);
-  const mainView = useViewer((s) => s.mainView);
-  const colorMode = useViewer((s) => s.colorMode);
   const planLevel = useViewer((s) => s.planLevel);
-  const showEditor = useViewer((s) => s.showEditor);
-  const setMainView = useViewer((s) => s.setMainView);
-  const setColorMode = useViewer((s) => s.setColorMode);
+  const theme = useViewer((s) => s.theme);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
-  const toggleEditor = useViewer((s) => s.toggleEditor);
+  const toggleTheme = useViewer((s) => s.toggleTheme);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -41,31 +32,22 @@ export function Toolbar() {
     <header className="toolbar">
       <div className="brand">
         <strong>ugatsu</strong>
-        <span className={`status-dot ${parseError ? "bad" : "good"}`} title={parseError ? "パースエラー" : "整合"} />
-        <span className="file-name">
-          {entry}
-          {layerCount > 1 && <span className="layer-count"> +{layerCount - 1}層</span>}
-        </span>
       </div>
+      {/* 開いているファイル — ピルで浮かべる */}
+      <span className="file-pill" title={parseError ? "パースエラー" : "整合"}>
+        <span className={`status-dot ${parseError ? "bad" : "good"}`} />
+        {entry}
+        {layerCount > 1 && <span className="layer-count"> +{layerCount - 1}層</span>}
+      </span>
 
-      <select
-        className="example-select"
-        value=""
-        onChange={(e) => {
-          const ex = EXAMPLES.find((x) => x.key === e.target.value);
-          if (ex) setFiles(ex.files, ex.entry);
-        }}
-      >
-        <option value="">例を開く…</option>
+      <Dropdown icon="archive" label="例を開く" closeOnSelect>
         {EXAMPLES.map((ex) => (
-          <option key={ex.key} value={ex.key}>
+          <button key={ex.key} className="dd-item" onClick={() => setFiles(ex.files, ex.entry)}>
             {ex.label}
-          </option>
+          </button>
         ))}
-      </select>
-      <button className="mini" onClick={() => fileInput.current?.click()}>
-        開く
-      </button>
+      </Dropdown>
+      <RoundIcon icon="upload" label="ファイルを開く" onClick={() => fileInput.current?.click()} />
       <input
         ref={fileInput}
         type="file"
@@ -79,9 +61,7 @@ export function Toolbar() {
       />
 
       <div className="export-menu">
-        <button className="mini" onClick={() => setMenuOpen((v) => !v)}>
-          書き出し ▾
-        </button>
+        <RoundIcon icon="download" label="書き出し" selected={menuOpen} onClick={() => setMenuOpen((v) => !v)} />
         {menuOpen && (
           <div className="menu panel" onClick={() => setMenuOpen(false)}>
             <button onClick={() => downloadText(activeFile, source)}>
@@ -115,26 +95,13 @@ export function Toolbar() {
         )}
       </div>
 
-      <nav className="view-tabs">
-        {VIEWS.map(([v, label]) => (
-          <button key={v} className={`tab ${mainView === v ? "tab-on" : ""}`} onClick={() => setMainView(v)}>
-            {label}
-          </button>
-        ))}
-      </nav>
-
-      <label className="color-mode">
-        色
-        <select value={colorMode} onChange={(e) => setColorMode(e.target.value as ColorMode)}>
-          <option value="use">用途</option>
-          <option value="type">型</option>
-          <option value="level">レベル</option>
-        </select>
-      </label>
-
-      <button className={`mini ${showEditor ? "" : "mini-off"}`} onClick={toggleEditor}>
-        {showEditor ? "◀ エディタ" : "▶ エディタ"}
-      </button>
+      <div className="toolbar-right">
+        <RoundIcon
+          icon={theme === "dark" ? "sun" : "moon"}
+          label={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
+          onClick={toggleTheme}
+        />
+      </div>
     </header>
   );
 }

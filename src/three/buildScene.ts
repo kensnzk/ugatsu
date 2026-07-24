@@ -23,9 +23,9 @@ export interface SceneOptions {
   hiddenLevels: Record<string, true>;
 }
 
-// 描画色はDSトークンから導出 (遅延読取 — stylesheet適用後に評価される)
-const INK = () => tokenColor("--gray-400"); // 壁 (立体では紙面より明るく — 空間の色が主役)
-const LINE = () => tokenColor("--gray-700"); // 2.5Dの壁線
+// 描画色はDSトークンから遅延導出。light/darkで反転が要る線はセマンティック側を使う
+const INK = () => tokenColor("--gray-400"); // 壁 (中間調 — 両テーマで成立、空間の色が主役)
+const LINE = () => tokenColor("--text-2"); // 2.5Dの壁線 (反転)
 const EDGE = () => tokenColor("--gray-500");
 const DOOR = () => tokenColor("--gray-600");
 const GLASS = () => tokenColor("--primary-300");
@@ -204,7 +204,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
     const plate = new THREE.Mesh(
       g,
-      new THREE.MeshLambertMaterial({ color: tokenColor("--gray-150"), side: THREE.DoubleSide }),
+      new THREE.MeshLambertMaterial({ color: tokenColor("--bg-subtle"), side: THREE.DoubleSide }),
     );
     plate.position.y = -30;
     group.add(plate);
@@ -214,7 +214,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     group.add(
       new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(linePts),
-        new THREE.LineBasicMaterial({ color: tokenColor("--gray-500") }),
+        new THREE.LineBasicMaterial({ color: tokenColor("--text-3") }),
       ),
     );
   }
