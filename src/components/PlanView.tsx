@@ -14,10 +14,12 @@ import {
   type Segment,
 } from "@kensnzk/koyu";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
-import { Button } from "../lib/ds.js";
+import { Radio } from "../lib/ds.js";
 import { token } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
+import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
+import { RoundIcon } from "./ui.js";
 
 const M = 1680; // 余白 mm
 const WALL_DEFAULT_T = 100;
@@ -393,20 +395,20 @@ export function PlanView() {
   return (
     <div className="plan-view">
       <div className="plan-toolbar">
-        {levels.map((l) => (
-          <button
-            key={l}
-            className={`chip ${l === planLevel ? "chip-on" : ""}`}
-            onClick={() => setPlanLevel(l)}
-          >
-            {l}
-          </button>
-        ))}
-        {vb && (
-          <Button size="sm" variant="ghost" onClick={() => setVb(null)}>
-            全体
-          </Button>
-        )}
+        <Dropdown icon="layers" label={`レベル切替 (${planLevel})`}>
+          {levels.map((l) => (
+            <Radio
+              key={l}
+              name="plan-level"
+              value={l}
+              checked={l === planLevel}
+              onChange={() => setPlanLevel(l)}
+              label={l}
+            />
+          ))}
+        </Dropdown>
+        <span className="plan-level-now">{planLevel}</span>
+        {vb && <RoundIcon icon="frame" label="全体" variant="outline" onClick={() => setVb(null)} />}
       </div>
       <svg
         ref={svgRef}

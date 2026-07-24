@@ -5,5 +5,6 @@ export { IconButton } from "@kensnzk/koyu-design-system/components/core/IconButt
 export { Tabs } from "@kensnzk/koyu-design-system/components/navigation/Tabs.jsx";
 export { Select } from "@kensnzk/koyu-design-system/components/forms/Select.jsx";
 export { Checkbox } from "@kensnzk/koyu-design-system/components/forms/Checkbox.jsx";
+export { Radio } from "@kensnzk/koyu-design-system/components/forms/Radio.jsx";
 export { Switch } from "@kensnzk/koyu-design-system/components/forms/Switch.jsx";
 export { Slider } from "@kensnzk/koyu-design-system/components/forms/Slider.jsx";

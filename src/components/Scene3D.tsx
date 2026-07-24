@@ -4,12 +4,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { areaM2, displayName } from "@kensnzk/koyu";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
-import { Button, Checkbox, IconButton, Slider, Switch } from "../lib/ds.js";
+import { Button, Checkbox, Slider, Switch } from "../lib/ds.js";
 import { tokenColor } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
+import { RoundIcon } from "./ui.js";
 
 export function Scene3D() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -25,6 +26,8 @@ export function Scene3D() {
   } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; path: string } | null>(null);
   const [glError, setGlError] = useState(false);
+  // 再試行の合図 (WebGL失敗後にコンテキスト作成をやり直す)
+  const [glRetry, setGlRetry] = useState(0);
 
   const model = useViewer((s) => s.model);
   const modelKey = useViewer((s) => s.modelKey);
@@ -123,10 +126,13 @@ export function Scene3D() {
       controls.dispose();
       if (world.built) disposeGroup(world.built.group);
       renderer.dispose();
+      // GLコンテキストを即時解放する (GCまかせだと再マウントの繰返しで
+      // コンテキスト上限に達し、ChromeのGPUプロセスを巻き込みやすい)
+      renderer.forceContextLoss();
       host.removeChild(renderer.domElement);
       worldRef.current = null;
     };
-  }, []);
+  }, [glRetry]);
 
   // テーマ切替 — 机・地面色・グリッドを新トークンで作り直す
   useEffect(() => {
@@ -226,10 +232,19 @@ export function Scene3D() {
         <div className="scene3d-fallback panel">
           <strong>3D表示を初期化できませんでした</strong>
           <span>
-            ブラウザでWebGLが利用できません。ハードウェアアクセラレーションを有効にして
-            ブラウザを再起動してください (Chromeは chrome://gpu で状態を確認できます)。
-            平面・表・エディタはそのまま使えます。
+            ブラウザでWebGLが利用できません。GPUプロセスが落ちた直後なら再試行で直ることがあります。
+            直らない場合はChromeの再起動が必要です (chrome://gpu で状態確認・ハードウェア
+            アクセラレーションが有効か確認)。平面・表・エディタはそのまま使えます。
           </span>
+          <Button
+            size="sm"
+            onClick={() => {
+              setGlError(false);
+              setGlRetry((n) => n + 1);
+            }}
+          >
+            再試行
+          </Button>
         </div>
       </div>
     );
@@ -303,7 +318,7 @@ export function Scene3D() {
             )}
           </Dropdown>
         )}
-        <IconButton icon="frame" label="フィット" size="sm" variant="outline" onClick={fit} />
+        <RoundIcon icon="frame" label="フィット" variant="outline" onClick={fit} />
       </div>
       {colors && <Legend colors={colors} />}
       {tooltip && model && (

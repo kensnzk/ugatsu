@@ -6,6 +6,7 @@ import { Inspector } from "./Inspector.js";
 import { PlanView } from "./PlanView.js";
 import { Scene3D } from "./Scene3D.js";
 import { Toolbar } from "./Toolbar.js";
+import { RoundIcon } from "./ui.js";
 
 export function App() {
   const mainView = useViewer((s) => s.mainView);
@@ -13,6 +14,8 @@ export function App() {
   const showInspector = useViewer((s) => s.showInspector);
   const inspectorWidth = useViewer((s) => s.inspectorWidth);
   const setInspectorWidth = useViewer((s) => s.setInspectorWidth);
+  const toggleEditor = useViewer((s) => s.toggleEditor);
+  const toggleInspector = useViewer((s) => s.toggleInspector);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
   const [dropping, setDropping] = useState(false);
@@ -88,15 +91,29 @@ export function App() {
           </div>
           {mainView === "table" && <AreaTable />}
         </main>
-        {showEditor && (
+        {showEditor ? (
           <div className="side side-left">
             <EditorPane />
+            <div className="side-close">
+              <RoundIcon icon="pin-left" label="エディタを閉じる" onClick={toggleEditor} />
+            </div>
+          </div>
+        ) : (
+          <div className="side-reopen side-reopen-left">
+            <RoundIcon icon="pin-right" label="エディタを開く" variant="outline" onClick={toggleEditor} />
           </div>
         )}
-        {showInspector && (
+        {showInspector ? (
           <div className="side side-right" style={{ width: inspectorWidth }}>
             <div className="side-resize" onPointerDown={startInspectorResize} />
             <Inspector />
+            <div className="side-close">
+              <RoundIcon icon="pin-right" label="プロパティを閉じる" onClick={toggleInspector} />
+            </div>
+          </div>
+        ) : (
+          <div className="side-reopen side-reopen-right">
+            <RoundIcon icon="pin-left" label="プロパティを開く" variant="outline" onClick={toggleInspector} />
           </div>
         )}
       </div>

@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
 import { svgPlan, toCanonical } from "@kensnzk/koyu";
 import { EXAMPLES } from "../examples.js";
-import { Button, IconButton, Select, Tabs } from "../lib/ds.js";
+import { Select, Tabs } from "../lib/ds.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
 import type { ColorMode } from "../lib/colors.js";
 import { useViewer, type MainView } from "../state/store.js";
+import { RoundIcon } from "./ui.js";
 
 const VIEW_ITEMS: Array<{ value: MainView; label: string }> = [
   { value: "plan", label: "平面" },
@@ -28,15 +29,11 @@ export function Toolbar() {
   const mainView = useViewer((s) => s.mainView);
   const colorMode = useViewer((s) => s.colorMode);
   const planLevel = useViewer((s) => s.planLevel);
-  const showEditor = useViewer((s) => s.showEditor);
-  const showInspector = useViewer((s) => s.showInspector);
   const theme = useViewer((s) => s.theme);
   const setMainView = useViewer((s) => s.setMainView);
   const setColorMode = useViewer((s) => s.setColorMode);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
-  const toggleEditor = useViewer((s) => s.toggleEditor);
-  const toggleInspector = useViewer((s) => s.toggleInspector);
   const toggleTheme = useViewer((s) => s.toggleTheme);
 
   const fileInput = useRef<HTMLInputElement>(null);
@@ -50,21 +47,15 @@ export function Toolbar() {
 
   return (
     <header className="toolbar">
-      <IconButton
-        icon="pin-left"
-        label={showEditor ? "エディタを閉じる" : "エディタを開く"}
-        size="sm"
-        selected={showEditor}
-        onClick={toggleEditor}
-      />
       <div className="brand">
         <strong>ugatsu</strong>
-        <span className={`status-dot ${parseError ? "bad" : "good"}`} title={parseError ? "パースエラー" : "整合"} />
-        <span className="file-name">
-          {entry}
-          {layerCount > 1 && <span className="layer-count"> +{layerCount - 1}層</span>}
-        </span>
       </div>
+      {/* 開いているファイル — ピルで浮かべる */}
+      <span className="file-pill" title={parseError ? "パースエラー" : "整合"}>
+        <span className={`status-dot ${parseError ? "bad" : "good"}`} />
+        {entry}
+        {layerCount > 1 && <span className="layer-count"> +{layerCount - 1}層</span>}
+      </span>
 
       <Select
         size="sm"
@@ -78,9 +69,7 @@ export function Toolbar() {
           ...EXAMPLES.map((ex) => ({ value: ex.key, label: ex.label })),
         ]}
       />
-      <Button size="sm" onClick={() => fileInput.current?.click()}>
-        開く
-      </Button>
+      <RoundIcon icon="upload" label="ファイルを開く" onClick={() => fileInput.current?.click()} />
       <input
         ref={fileInput}
         type="file"
@@ -94,9 +83,7 @@ export function Toolbar() {
       />
 
       <div className="export-menu">
-        <Button size="sm" iconRight="chevron-down" onClick={() => setMenuOpen((v) => !v)}>
-          書き出し
-        </Button>
+        <RoundIcon icon="download" label="書き出し" selected={menuOpen} onClick={() => setMenuOpen((v) => !v)} />
         {menuOpen && (
           <div className="menu panel" onClick={() => setMenuOpen(false)}>
             <button onClick={() => downloadText(activeFile, source)}>
@@ -149,18 +136,10 @@ export function Toolbar() {
         />
       </label>
 
-      <IconButton
+      <RoundIcon
         icon={theme === "dark" ? "sun" : "moon"}
         label={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
-        size="sm"
         onClick={toggleTheme}
-      />
-      <IconButton
-        icon="pin-right"
-        label={showInspector ? "プロパティを閉じる" : "プロパティを開く"}
-        size="sm"
-        selected={showInspector}
-        onClick={toggleInspector}
       />
     </header>
   );
