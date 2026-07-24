@@ -14,13 +14,17 @@ import {
   type Segment,
 } from "@kensnzk/koyu";
 import { buildColors, ROUTE_COLOR, SELECT_COLOR, VOID_COLOR } from "../lib/colors.js";
+import { token } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Legend } from "./Legend.js";
 
-const INK = "#1f1f1f";
-const PAPER = "#faf8f4";
-const GRID = "#b5aa94";
-const FAINT = "#b3ab9c";
+// 作図色はDSトークンから導出 (stylesheet適用後にモジュール評価される)
+const INK = token("--gray-900");
+const PAPER = token("--bg-canvas"); // 図面の地 = 机 (開口の消し込みも同色)
+const GRID = token("--gray-400"); // 通り芯
+const FAINT = token("--gray-300"); // 吹抜け・開放・分節の淡い線
+const SUBTLE = token("--gray-500"); // 敷地境界・注記
+const BAND = token("--gray-600"); // seg帯と表記
 const M = 1680; // 余白 mm
 const WALL_DEFAULT_T = 100;
 
@@ -188,7 +192,7 @@ export function PlanView() {
           {displayName(s)}
         </text>
         {!small && (
-          <text x={cx} y={cy + 260} fontSize={200} fill="#8a8171">
+          <text x={cx} y={cy + 260} fontSize={200} fill={SUBTLE}>
             {s.type === "void" ? "吹抜け" : `${s.type}${semi ? " ・ 半屋外" : ""} ・ ${a?.toFixed(1)}㎡`}
           </text>
         )}
@@ -216,14 +220,14 @@ export function PlanView() {
             y={sy(r.y2)}
             width={r.x2 - r.x1}
             height={r.y2 - r.y1}
-            fill="#e7dfcc"
+            fill={token("--gray-200")}
             fillOpacity={0.55}
             stroke={FAINT}
             strokeWidth={16}
             strokeDasharray="80 60"
           />
           {label && (
-            <text x={sx(r.x1) + 120} y={sy(r.y2) + 260} fontSize={170} fill="#8a8171">
+            <text x={sx(r.x1) + 120} y={sy(r.y2) + 260} fontSize={170} fill={SUBTLE}>
               {label}
             </text>
           )}
@@ -241,7 +245,7 @@ export function PlanView() {
         key={`site${i}`}
         d={`${d} Z`}
         fill="none"
-        stroke="#8a8171"
+        stroke={SUBTLE}
         strokeWidth={22}
         strokeDasharray="280 60 50 60 50 60"
         pointerEvents="none"
@@ -340,7 +344,7 @@ export function PlanView() {
       const placed = placeBand(model, b, g, "seg");
       if ("error" in placed) continue;
       wallMarks.push(
-        <rect key={`s${b.line}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill="#77716a" />,
+        <rect key={`s${b.line}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill={BAND} />,
       );
       const spec = g.attrs["spec"];
       if (typeof spec === "string") {
@@ -352,7 +356,7 @@ export function PlanView() {
             y={sy(placed.cy) + (h ? -140 : 60)}
             textAnchor={h ? "middle" : "start"}
             fontSize={160}
-            fill="#77716a"
+            fill={BAND}
           >
             {spec}
           </text>,
@@ -407,7 +411,7 @@ export function PlanView() {
         className="plan-svg"
         viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`}
         preserveAspectRatio="xMidYMid meet"
-        fontFamily="'Hiragino Sans','Noto Sans JP',sans-serif"
+        fontFamily={token("--font-sans")}
         onPointerDown={(e) => {
           drag.current = { x: e.clientX, y: e.clientY, vb: view, moved: false };
         }}
@@ -449,7 +453,7 @@ export function PlanView() {
           <text x={M - 1240} y={extent.H - 360} fontSize={240} fill={INK}>
             {`${model.name ?? "無題"} — ${planLevel} 平面`}
           </text>
-          <text x={extent.W - M + 1240} y={extent.H - 360} textAnchor="end" fontSize={180} fill="#a49b8a">
+          <text x={extent.W - M + 1240} y={extent.H - 360} textAnchor="end" fontSize={180} fill={GRID}>
             koyu — 空間から生成 (壁芯・mm)
           </text>
         </g>

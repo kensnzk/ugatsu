@@ -4,11 +4,10 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { areaM2, displayName } from "@kensnzk/koyu";
 import { buildColors, SELECT_COLOR, ROUTE_COLOR } from "../lib/colors.js";
+import { tokenColor } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
 import { Legend } from "./Legend.js";
-
-const PAPER = 0xfaf8f4;
 
 export function Scene3D() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -64,14 +63,14 @@ export function Scene3D() {
       return;
     }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setClearColor(PAPER);
+    renderer.setClearColor(tokenColor("--bg-canvas"));
     host.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, 0xb8ae9c, 1.05));
-    const dir = new THREE.DirectionalLight(0xffffff, 0.85);
+    scene.add(new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05)); // ds:allow 白色光 (物理値)
+    const dir = new THREE.DirectionalLight(0xffffff, 0.85); // ds:allow 白色光 (物理値)
     dir.position.set(30, 60, 40);
     scene.add(dir);
-    const grid = new THREE.GridHelper(120, 120, 0xe0dacb, 0xeae4d6);
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--gray-200"), tokenColor("--gray-150"));
     grid.position.y = -0.02;
     scene.add(grid);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2000);
@@ -174,8 +173,8 @@ export function Scene3D() {
       const path = m.userData.path as string;
       if (path === selected) mat.emissive.set(SELECT_COLOR);
       else if (onRoute.has(path)) mat.emissive.set(ROUTE_COLOR);
-      else if (path === hovered) mat.emissive.set(0x5a5040);
-      else mat.emissive.set(0x000000);
+      else if (path === hovered) mat.emissive.set(tokenColor("--gray-600"));
+      else mat.emissive.set(0x000000); // ds:allow 発光オフ (物理値)
       mat.emissiveIntensity = path === selected ? 0.5 : 0.35;
     }
   }
