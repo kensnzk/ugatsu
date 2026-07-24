@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ugatsu</title>
+    <!-- ダークテーマの初期フラッシュ防止 (本適用は src/lib/theme.ts) -->
+    <script>
+      try {
+        var t = localStorage.getItem("ugatsu:theme");
+        if (t === "dark" || (!t && matchMedia("(prefers-color-scheme: dark)").matches))
+          document.documentElement.dataset.theme = "dark";
+      } catch (e) {}
+    </script>
     <!-- embed-model.mjs がここに .muro ソースを注入する。空なら同梱の例が開く -->
     <script id="muro-embed" type="application/muro"></script>
   </head>

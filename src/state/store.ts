@@ -12,6 +12,7 @@ import {
   type Route,
 } from "@kensnzk/koyu";
 import type { ColorMode } from "../lib/colors.js";
+import { applyTheme, initialTheme, type Theme } from "../lib/theme.js";
 
 export type MainView = "plan" | "3d" | "table";
 
@@ -63,6 +64,8 @@ export interface ViewerState {
   showWalls: boolean;
   showOpenings: boolean;
   showEditor: boolean;
+  /** ライト/ダーク — DSトークンごと切り替わる ([data-theme]) */
+  theme: Theme;
 
   selected: string | null;
   hovered: string | null;
@@ -86,6 +89,7 @@ export interface ViewerState {
   setShowWalls(b: boolean): void;
   setShowOpenings(b: boolean): void;
   toggleEditor(): void;
+  toggleTheme(): void;
   select(path: string | null): void;
   hover(path: string | null): void;
   setRouteTarget(path: string | null): void;
@@ -171,6 +175,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     showWalls: true,
     showOpenings: true,
     showEditor: true,
+    theme: initialTheme(),
 
     selected: null,
     hovered: null,
@@ -209,6 +214,11 @@ export const useViewer = create<ViewerState>()((set, get) => {
     setShowWalls: (showWalls) => set({ showWalls }),
     setShowOpenings: (showOpenings) => set({ showOpenings }),
     toggleEditor: () => set((s) => ({ showEditor: !s.showEditor })),
+    toggleTheme() {
+      const theme: Theme = get().theme === "dark" ? "light" : "dark";
+      applyTheme(theme);
+      set({ theme });
+    },
 
     select(path) {
       const st = get();

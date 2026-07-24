@@ -11,6 +11,7 @@ import {
   siteReport,
   type Boundary,
 } from "@kensnzk/koyu";
+import { Select } from "../lib/ds.js";
 import { useViewer } from "../state/store.js";
 
 function boundaryMark(b: Boundary, passable: boolean, doors: number): string {
@@ -204,20 +205,18 @@ export function Inspector() {
       </ul>
 
       <h3>経路 — 扉をいくつ通るか</h3>
-      <select
-        className="route-select"
+      <Select
+        size="sm"
+        fullWidth
         value={routeTarget ?? ""}
-        onChange={(e) => setRouteTarget(e.target.value || null)}
-      >
-        <option value="">行き先を選ぶ…</option>
-        {allPaths
-          .filter((p) => p.path !== space.path)
-          .map((p) => (
-            <option key={p.path} value={p.path}>
-              {p.label}
-            </option>
-          ))}
-      </select>
+        onChange={(e: { target: { value: string } }) => setRouteTarget(e.target.value || null)}
+        options={[
+          { value: "", label: "行き先を選ぶ…" },
+          ...allPaths
+            .filter((p) => p.path !== space.path)
+            .map((p) => ({ value: p.path, label: p.label })),
+        ]}
+      />
       {route === "unreachable" && <p className="route-result">✖ 到達できません</p>}
       {route && route !== "unreachable" && (
         <div className="route-result">

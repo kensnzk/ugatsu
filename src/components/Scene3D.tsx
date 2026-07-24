@@ -3,7 +3,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { areaM2, displayName } from "@kensnzk/koyu";
-import { buildColors, SELECT_COLOR, ROUTE_COLOR } from "../lib/colors.js";
+import { buildColors, routeColor, selectColor } from "../lib/colors.js";
+import { Button, Checkbox, Slider, Switch } from "../lib/ds.js";
 import { tokenColor } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
@@ -17,6 +18,8 @@ export function Scene3D() {
     camera: THREE.PerspectiveCamera;
     controls: OrbitControls;
     raycaster: THREE.Raycaster;
+    grid: THREE.GridHelper;
+    hemi: THREE.HemisphereLight;
     built: BuiltScene | null;
   } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; path: string } | null>(null);
@@ -34,6 +37,7 @@ export function Scene3D() {
   const selected = useViewer((s) => s.selected);
   const hovered = useViewer((s) => s.hovered);
   const route = useViewer((s) => s.route);
+  const theme = useViewer((s) => s.theme);
   const select = useViewer((s) => s.select);
   const hover = useViewer((s) => s.hover);
   const setStackMode = useViewer((s) => s.setStackMode);
@@ -66,11 +70,12 @@ export function Scene3D() {
     renderer.setClearColor(tokenColor("--bg-canvas"));
     host.appendChild(renderer.domElement);
     const scene = new THREE.Scene();
-    scene.add(new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05)); // ds:allow 白色光 (物理値)
+    const hemi = new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05); // ds:allow 白色光 (物理値)
+    scene.add(hemi);
     const dir = new THREE.DirectionalLight(0xffffff, 0.85); // ds:allow 白色光 (物理値)
     dir.position.set(30, 60, 40);
     scene.add(dir);
-    const grid = new THREE.GridHelper(120, 120, tokenColor("--gray-200"), tokenColor("--gray-150"));
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--border-2"), tokenColor("--border-1"));
     grid.position.y = -0.02;
     scene.add(grid);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2000);
@@ -85,6 +90,8 @@ export function Scene3D() {
       camera,
       controls,
       raycaster: new THREE.Raycaster(),
+      grid,
+      hemi,
       built: null,
     };
     worldRef.current = world;
@@ -120,6 +127,21 @@ export function Scene3D() {
     };
   }, []);
 
+  // テーマ切替 — 机・地面色・グリッドを新トークンで作り直す
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    world.renderer.setClearColor(tokenColor("--bg-canvas"));
+    world.hemi.groundColor.set(tokenColor("--gray-300"));
+    world.scene.remove(world.grid);
+    world.grid.geometry.dispose();
+    (world.grid.material as THREE.Material).dispose();
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--border-2"), tokenColor("--border-1"));
+    grid.position.y = -0.02;
+    world.scene.add(grid);
+    world.grid = grid;
+  }, [theme]);
+
   // モデル / 表示設定の変化でシーンを組み直す
   useEffect(() => {
     const world = worldRef.current;
@@ -142,7 +164,7 @@ export function Scene3D() {
     world.built = built;
     applyHighlights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels]);
+  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels, theme]);
 
   // カメラフィット (ファイル切替・モード切替のとき)
   useEffect(() => {
@@ -171,14 +193,14 @@ export function Scene3D() {
       const mat = m.material as THREE.MeshLambertMaterial;
       if (!mat.emissive) continue;
       const path = m.userData.path as string;
-      if (path === selected) mat.emissive.set(SELECT_COLOR);
-      else if (onRoute.has(path)) mat.emissive.set(ROUTE_COLOR);
-      else if (path === hovered) mat.emissive.set(tokenColor("--gray-600"));
+      if (path === selected) mat.emissive.set(selectColor());
+      else if (onRoute.has(path)) mat.emissive.set(routeColor());
+      else if (path === hovered) mat.emissive.set(tokenColor("--text-3"));
       else mat.emissive.set(0x000000); // ds:allow 発光オフ (物理値)
       mat.emissiveIntensity = path === selected ? 0.5 : 0.35;
     }
   }
-  useEffect(applyHighlights, [selected, hovered, route, modelKey, stackMode]);
+  useEffect(applyHighlights, [selected, hovered, route, modelKey, stackMode, theme]);
 
   // ピッキング
   function pick(ev: React.PointerEvent): string | null {
@@ -236,50 +258,34 @@ export function Scene3D() {
         }}
       />
       <div className="scene3d-controls panel">
-        <label className="toggle">
-          <input
-            type="checkbox"
-            checked={stackMode}
-            onChange={(e) => setStackMode(e.target.checked)}
-          />
-          2.5D 重ね
-        </label>
+        <Switch size="sm" label="2.5D 重ね" checked={stackMode} onChange={(b: boolean) => setStackMode(b)} />
         {stackMode ? (
-          <label className="slider">
-            展開 ×{spread.toFixed(1)}
-            <input
-              type="range"
+          <div className="spread-slider">
+            <Slider
               min={1}
               max={5}
               step={0.5}
               value={spread}
-              onChange={(e) => setSpread(Number(e.target.value))}
+              onChange={(n: number) => setSpread(n)}
+              label="展開"
+              showValue
+              unit="×"
             />
-          </label>
+          </div>
         ) : (
           <>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showWalls}
-                onChange={(e) => setShowWalls(e.target.checked)}
-              />
-              壁
-            </label>
-            <label className="toggle">
-              <input
-                type="checkbox"
-                checked={showOpenings}
-                onChange={(e) => setShowOpenings(e.target.checked)}
-                disabled={!showWalls}
-              />
-              開口
-            </label>
+            <Checkbox label="壁" checked={showWalls} onChange={(b: boolean) => setShowWalls(b)} />
+            <Checkbox
+              label="開口"
+              checked={showOpenings}
+              onChange={(b: boolean) => setShowOpenings(b)}
+              disabled={!showWalls}
+            />
           </>
         )}
-        <button className="mini" onClick={fit}>
+        <Button size="sm" variant="ghost" onClick={fit}>
           フィット
-        </button>
+        </Button>
       </div>
       {levels.length > 1 && (
         <div className="scene3d-levels panel">
@@ -294,9 +300,9 @@ export function Scene3D() {
             </button>
           ))}
           {Object.keys(hiddenLevels).length > 0 && (
-            <button className="mini" onClick={showAllLevels}>
+            <Button size="sm" variant="ghost" onClick={showAllLevels}>
               全表示
-            </button>
+            </Button>
           )}
         </div>
       )}

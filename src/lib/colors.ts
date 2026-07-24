@@ -29,12 +29,13 @@ const USE_FIXED: Record<string, string> = {
   common: "#6d8ca0",
 };
 
-export const UNSET_COLOR = token("--gray-300");
-export const VOID_COLOR = token("--gray-200");
+// テーマ (light/dark) 追従のため、値の捕捉ではなく呼出時にトークンを読む
+export const unsetColor = () => token("--gray-300");
+export const voidColor = () => token("--gray-200");
 /** 選択 = 藍 (DS: selection is indigo) */
-export const SELECT_COLOR = token("--primary");
+export const selectColor = () => token("--primary");
 /** 経路 = 朱 (DS: vermilion = markup, the one thing demanding attention) */
-export const ROUTE_COLOR = token("--accent");
+export const routeColor = () => token("--accent");
 
 export class ColorAssigner {
   private map = new Map<string, string>();
@@ -43,7 +44,7 @@ export class ColorAssigner {
     for (const [k, v] of Object.entries(fixed)) this.map.set(k, v);
   }
   color(key: string | undefined): string {
-    if (key === undefined) return UNSET_COLOR;
+    if (key === undefined) return unsetColor();
     const hit = this.map.get(key);
     if (hit) return hit;
     const c = PALETTE[this.next % PALETTE.length]!;
@@ -86,7 +87,7 @@ export function buildColors(model: Model, mode: ColorMode): ModelColors {
   }
   return {
     mode,
-    colorOf: (s: Space) => (s.type === "void" ? VOID_COLOR : assigner.color(keyOf(s))),
+    colorOf: (s: Space) => (s.type === "void" ? voidColor() : assigner.color(keyOf(s))),
     legend,
   };
 }

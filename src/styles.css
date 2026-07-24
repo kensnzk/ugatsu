@@ -19,21 +19,29 @@ input:focus-visible {
   outline: none;
   box-shadow: var(--ring);
 }
+/* ダーク時にスクロールバー角が白く残るのを防ぐ */
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
 
+/* 机 (--bg-app) の上にすべてのパネルが浮かぶ (DSの浮遊パネル様式) */
 .app {
   height: 100%;
   display: flex;
   flex-direction: column;
+  background: var(--bg-app);
 }
 
-/* ---- ツールバー ---- */
+/* ---- ツールバー (浮遊) ---- */
 .toolbar {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-15) var(--space-25);
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-1);
+  padding: var(--space-15) var(--space-3);
+  margin: var(--space-3) var(--space-3) 0;
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
   flex-wrap: wrap;
 }
 .brand {
@@ -64,49 +72,10 @@ input:focus-visible {
   color: var(--text-2);
   font-size: var(--text-xs);
 }
-select,
-.mini {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-2);
-  border-radius: var(--radius-md);
-  padding: var(--space-05) var(--space-2);
-  cursor: pointer;
-  font-size: var(--text-xs);
-  color: var(--text-1);
-}
-.mini:hover,
-select:hover {
-  border-color: var(--border-strong);
-  background: var(--bg-hover);
-}
-.mini-off {
-  color: var(--text-3);
-}
-/* 表示切替 — segmented tabs */
+/* 表示切替 — DS Tabs (segmented) の置き場 */
 .view-tabs {
   display: flex;
-  gap: var(--space-05);
   margin-left: auto;
-  background: var(--bg-subtle);
-  border-radius: var(--radius-md);
-  padding: var(--space-05);
-}
-.tab {
-  border: none;
-  background: transparent;
-  padding: var(--space-1) var(--space-4);
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  color: var(--text-2);
-  font-size: var(--text-sm);
-}
-.tab:hover {
-  color: var(--text-1);
-}
-.tab-on {
-  background: var(--bg-surface);
-  color: var(--text-1);
-  box-shadow: var(--shadow-1);
 }
 .color-mode {
   display: flex;
@@ -145,26 +114,29 @@ select:hover {
   cursor: default;
 }
 
-/* ---- レイアウト ---- */
+/* ---- レイアウト — 浮遊パネルのグリッド (Linear様式) ---- */
 .body {
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: 1fr 300px;
+  gap: var(--space-3);
+  padding: var(--space-3);
 }
 .body.with-editor {
   grid-template-columns: 400px 1fr 300px;
 }
-/* 中央は机 (canvas) — 一段暗く、パネルが紙として浮かぶ */
+/* 中央は机 (canvas) — 一段暗い井戸。パネルは紙としてその上に */
 .main {
   min-width: 0;
   min-height: 0;
   position: relative;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid var(--border-1);
-  border-right: 1px solid var(--border-1);
   background: var(--bg-canvas);
+  border-radius: var(--radius-lg);
+  box-shadow: inset 0 0 0 1px var(--border-1);
+  overflow: hidden;
 }
 .view-slot {
   display: contents;
@@ -180,12 +152,15 @@ select:hover {
   color: var(--text-3);
 }
 
-/* ---- エディタ ---- */
+/* ---- エディタ (浮遊パネル) ---- */
 .editor-pane {
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--bg-surface);
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+  overflow: hidden;
 }
 .editor-host {
   flex: 1;
@@ -238,14 +213,24 @@ select:hover {
   flex-direction: column;
   position: relative;
 }
+/* レベル切替 — 図面上に浮かぶ */
 .plan-toolbar {
+  position: absolute;
+  top: var(--space-25);
+  left: var(--space-25);
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-15) var(--space-25);
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-1);
+  padding: var(--space-2) var(--space-25);
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
   flex-wrap: wrap;
+  max-width: calc(100% - var(--space-5));
+}
+.plan-toolbar .hint {
+  margin-left: var(--space-2);
 }
 .plan-svg {
   flex: 1;
@@ -335,16 +320,8 @@ select:hover {
   max-width: 300px;
   z-index: 5;
 }
-.toggle,
-.slider {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--text-2);
-}
-.slider input {
-  width: 110px;
+.spread-slider {
+  width: 160px;
 }
 .tooltip {
   position: fixed;
@@ -394,12 +371,15 @@ select:hover {
   display: inline-block;
 }
 
-/* ---- 面積表 ---- */
+/* ---- 面積表 (机の上の帳票パネル) ---- */
 .area-table {
   flex: 1;
   overflow: auto;
-  padding: var(--space-4) var(--space-5) var(--space-8);
-  background: var(--bg-app);
+  margin: var(--space-3);
+  padding: var(--space-5) var(--space-6) var(--space-8);
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
 }
 .table-head {
   display: flex;
@@ -418,7 +398,6 @@ select:hover {
   border-collapse: collapse;
   width: 100%;
   max-width: 860px;
-  background: var(--bg-surface);
   border: 1px solid var(--border-1);
 }
 .area-table th,
@@ -477,11 +456,13 @@ select:hover {
   font-weight: var(--weight-regular);
 }
 
-/* ---- インスペクタ ---- */
+/* ---- インスペクタ (浮遊パネル) ---- */
 .inspector {
   overflow-y: auto;
-  padding: var(--space-3) var(--space-4) var(--space-8);
-  background: var(--bg-surface);
+  padding: var(--space-4) var(--space-4) var(--space-8);
+  background: var(--bg-panel);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
 }
 .inspector h2 {
   font-size: var(--text-md);
@@ -540,9 +521,6 @@ select:hover {
   padding: 0 var(--space-15);
   font-size: var(--text-xs);
   margin-left: var(--space-15);
-}
-.route-select {
-  width: 100%;
 }
 .route-result {
   margin-top: var(--space-2);

@@ -31,3 +31,32 @@ export function tokenColor(name: string): number {
 export function resetTokenCache(): void {
   cache.clear();
 }
+
+// ---- ライト/ダーク (DSは [data-theme="dark"] で切替) ----
+
+export type Theme = "light" | "dark";
+const THEME_KEY = "ugatsu:theme";
+
+/** 保存値 → OS設定 の順で初期テーマを決める */
+export function initialTheme(): Theme {
+  if (typeof window === "undefined") return "light";
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    if (saved === "dark" || saved === "light") return saved;
+  } catch {
+    /* no-op */
+  }
+  return matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+/** テーマをDOMへ適用し永続化する。トークンキャッシュも捨てる */
+export function applyTheme(theme: Theme): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.dataset["theme"] = theme;
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* no-op */
+  }
+  resetTokenCache();
+}

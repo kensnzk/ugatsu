@@ -7,8 +7,13 @@ import { DEFAULT_EXAMPLE } from "./examples.js";
 import { capturePristineHtml, decodeBase64 } from "./lib/download.js";
 import { useViewer } from "./state/store.js";
 
+import { applyTheme } from "./lib/theme.js";
+
 // 配布用HTMLの自己複製のため、Reactがマウントする前の素のHTMLを確保する
 capturePristineHtml();
+
+// テーマ (保存値/OS設定) をトークン読取より先にDOMへ適用する
+applyTheme(useViewer.getState().theme);
 
 // 埋め込みモデル (MUN-143: 一つのファイルとして閲覧) があればそれを、なければ同梱の例を開く。
 // data-format="files" はレイヤー群 (合成 — koyu ADR-0010) のJSON埋め込み。

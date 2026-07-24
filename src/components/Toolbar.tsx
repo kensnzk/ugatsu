@@ -1,14 +1,21 @@
 import { useRef, useState } from "react";
 import { svgPlan, toCanonical } from "@kensnzk/koyu";
 import { EXAMPLES } from "../examples.js";
+import { Button, IconButton, Select, Tabs } from "../lib/ds.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
 import type { ColorMode } from "../lib/colors.js";
 import { useViewer, type MainView } from "../state/store.js";
 
-const VIEWS: Array<[MainView, string]> = [
-  ["plan", "平面"],
-  ["3d", "3D"],
-  ["table", "面積表"],
+const VIEW_ITEMS: Array<{ value: MainView; label: string }> = [
+  { value: "plan", label: "平面" },
+  { value: "3d", label: "3D" },
+  { value: "table", label: "面積表" },
+];
+
+const COLOR_ITEMS = [
+  { value: "use", label: "用途" },
+  { value: "type", label: "型" },
+  { value: "level", label: "レベル" },
 ];
 
 export function Toolbar() {
@@ -22,11 +29,13 @@ export function Toolbar() {
   const colorMode = useViewer((s) => s.colorMode);
   const planLevel = useViewer((s) => s.planLevel);
   const showEditor = useViewer((s) => s.showEditor);
+  const theme = useViewer((s) => s.theme);
   const setMainView = useViewer((s) => s.setMainView);
   const setColorMode = useViewer((s) => s.setColorMode);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
   const toggleEditor = useViewer((s) => s.toggleEditor);
+  const toggleTheme = useViewer((s) => s.toggleTheme);
 
   const fileInput = useRef<HTMLInputElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -48,24 +57,21 @@ export function Toolbar() {
         </span>
       </div>
 
-      <select
-        className="example-select"
+      <Select
+        size="sm"
         value=""
-        onChange={(e) => {
+        onChange={(e: { target: { value: string } }) => {
           const ex = EXAMPLES.find((x) => x.key === e.target.value);
           if (ex) setFiles(ex.files, ex.entry);
         }}
-      >
-        <option value="">例を開く…</option>
-        {EXAMPLES.map((ex) => (
-          <option key={ex.key} value={ex.key}>
-            {ex.label}
-          </option>
-        ))}
-      </select>
-      <button className="mini" onClick={() => fileInput.current?.click()}>
+        options={[
+          { value: "", label: "例を開く…" },
+          ...EXAMPLES.map((ex) => ({ value: ex.key, label: ex.label })),
+        ]}
+      />
+      <Button size="sm" onClick={() => fileInput.current?.click()}>
         開く
-      </button>
+      </Button>
       <input
         ref={fileInput}
         type="file"
@@ -79,9 +85,9 @@ export function Toolbar() {
       />
 
       <div className="export-menu">
-        <button className="mini" onClick={() => setMenuOpen((v) => !v)}>
-          書き出し ▾
-        </button>
+        <Button size="sm" iconRight="chevron-down" onClick={() => setMenuOpen((v) => !v)}>
+          書き出し
+        </Button>
         {menuOpen && (
           <div className="menu panel" onClick={() => setMenuOpen(false)}>
             <button onClick={() => downloadText(activeFile, source)}>
@@ -116,25 +122,38 @@ export function Toolbar() {
       </div>
 
       <nav className="view-tabs">
-        {VIEWS.map(([v, label]) => (
-          <button key={v} className={`tab ${mainView === v ? "tab-on" : ""}`} onClick={() => setMainView(v)}>
-            {label}
-          </button>
-        ))}
+        <Tabs
+          variant="segmented"
+          items={VIEW_ITEMS}
+          value={mainView}
+          onChange={(v: string) => setMainView(v as MainView)}
+        />
       </nav>
 
       <label className="color-mode">
         色
-        <select value={colorMode} onChange={(e) => setColorMode(e.target.value as ColorMode)}>
-          <option value="use">用途</option>
-          <option value="type">型</option>
-          <option value="level">レベル</option>
-        </select>
+        <Select
+          size="sm"
+          value={colorMode}
+          onChange={(e: { target: { value: string } }) => setColorMode(e.target.value as ColorMode)}
+          options={COLOR_ITEMS}
+        />
       </label>
 
-      <button className={`mini ${showEditor ? "" : "mini-off"}`} onClick={toggleEditor}>
-        {showEditor ? "◀ エディタ" : "▶ エディタ"}
-      </button>
+      <IconButton
+        icon={theme === "dark" ? "sun" : "moon"}
+        label={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
+        size="sm"
+        onClick={toggleTheme}
+      />
+      <Button
+        size="sm"
+        variant="ghost"
+        icon={showEditor ? "chevron-left" : "chevron-right"}
+        onClick={toggleEditor}
+      >
+        エディタ
+      </Button>
     </header>
   );
 }

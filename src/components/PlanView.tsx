@@ -13,18 +13,12 @@ import {
   type Opening,
   type Segment,
 } from "@kensnzk/koyu";
-import { buildColors, ROUTE_COLOR, SELECT_COLOR, VOID_COLOR } from "../lib/colors.js";
+import { buildColors, routeColor, selectColor } from "../lib/colors.js";
+import { Button } from "../lib/ds.js";
 import { token } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Legend } from "./Legend.js";
 
-// 作図色はDSトークンから導出 (stylesheet適用後にモジュール評価される)
-const INK = token("--gray-900");
-const PAPER = token("--bg-canvas"); // 図面の地 = 机 (開口の消し込みも同色)
-const GRID = token("--gray-400"); // 通り芯
-const FAINT = token("--gray-300"); // 吹抜け・開放・分節の淡い線
-const SUBTLE = token("--gray-500"); // 敷地境界・注記
-const BAND = token("--gray-600"); // seg帯と表記
 const M = 1680; // 余白 mm
 const WALL_DEFAULT_T = 100;
 
@@ -49,6 +43,15 @@ export function PlanView() {
   const select = useViewer((s) => s.select);
   const hover = useViewer((s) => s.hover);
   const setPlanLevel = useViewer((s) => s.setPlanLevel);
+  const theme = useViewer((s) => s.theme);
+
+  // 作図色は反転するセマンティックトークンから毎レンダー導出 (light/darkに追従)
+  const INK = token("--text-1"); // 墨 (壁・建具・主ラベル)
+  const PAPER = token("--bg-canvas"); // 図面の地 = 机 (開口の消し込みも同色)
+  const GRID = token("--text-disabled"); // 通り芯
+  const FAINT = token("--border-strong"); // 吹抜け・開放・分節の淡い線
+  const SUBTLE = token("--text-3"); // 敷地境界・注記
+  const BAND = token("--text-2"); // seg帯と表記
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [vb, setVb] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -56,7 +59,7 @@ export function PlanView() {
 
   const colors = useMemo(
     () => (model ? buildColors(model, colorMode) : null),
-    [model, colorMode, modelKey],
+    [model, colorMode, modelKey, theme],
   );
   const levels = useMemo(() => (model ? levelsWithRooms(model) : []), [model, modelKey]);
 
@@ -171,7 +174,7 @@ export function PlanView() {
             width={r.x2 - r.x1}
             height={r.y2 - r.y1}
             fill="none"
-            stroke={isSel ? SELECT_COLOR : ROUTE_COLOR}
+            stroke={isSel ? selectColor() : routeColor()}
             strokeWidth={isSel ? 70 : 50}
             pointerEvents="none"
           />,
@@ -220,7 +223,7 @@ export function PlanView() {
             y={sy(r.y2)}
             width={r.x2 - r.x1}
             height={r.y2 - r.y1}
-            fill={token("--gray-200")}
+            fill={token("--bg-active")}
             fillOpacity={0.55}
             stroke={FAINT}
             strokeWidth={16}
@@ -401,9 +404,9 @@ export function PlanView() {
         ))}
         <span className="hint">ホイールで拡大 ・ ドラッグで移動</span>
         {vb && (
-          <button className="mini" onClick={() => setVb(null)}>
+          <Button size="sm" variant="ghost" onClick={() => setVb(null)}>
             全体
-          </button>
+          </Button>
         )}
       </div>
       <svg
@@ -501,6 +504,7 @@ function doorSwing(
   sx: (x: number) => number,
   sy: (y: number) => number,
 ): ReactNode {
+  const INK = token("--text-1"); // 呼出時に読む (テーマ追従)
   // 開く側の空間: swing:a/b の指定、既定はa側 (領域を持つ方)。合併なら扉に最も近い矩形へ開く
   const sa = model.spaces.get(b.a);
   const sb = model.spaces.get(b.b);
