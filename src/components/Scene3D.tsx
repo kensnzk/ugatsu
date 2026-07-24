@@ -4,10 +4,11 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { areaM2, displayName } from "@kensnzk/koyu";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
-import { Button, Checkbox, Slider, Switch } from "../lib/ds.js";
+import { Button, Checkbox, IconButton, Slider, Switch } from "../lib/ds.js";
 import { tokenColor } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
+import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
 
 export function Scene3D() {
@@ -257,55 +258,53 @@ export function Scene3D() {
           if (d && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) select(pick(ev));
         }}
       />
-      <div className="scene3d-controls panel">
-        <Switch size="sm" label="2.5D 重ね" checked={stackMode} onChange={(b: boolean) => setStackMode(b)} />
-        {stackMode ? (
-          <div className="spread-slider">
-            <Slider
-              min={1}
-              max={5}
-              step={0.5}
-              value={spread}
-              onChange={(n: number) => setSpread(n)}
-              label="展開"
-              showValue
-              unit="×"
-            />
-          </div>
-        ) : (
-          <>
-            <Checkbox label="壁" checked={showWalls} onChange={(b: boolean) => setShowWalls(b)} />
-            <Checkbox
-              label="開口"
-              checked={showOpenings}
-              onChange={(b: boolean) => setShowOpenings(b)}
-              disabled={!showWalls}
-            />
-          </>
-        )}
-        <Button size="sm" variant="ghost" onClick={fit}>
-          フィット
-        </Button>
-      </div>
-      {levels.length > 1 && (
-        <div className="scene3d-levels panel">
-          {levels.map((l) => (
-            <button
-              key={l}
-              className={`chip ${hiddenLevels[l] ? "chip-off" : ""}`}
-              onClick={() => toggleLevelHidden(l)}
-              title={hiddenLevels[l] ? `${l} を表示` : `${l} を隠す`}
-            >
-              {l}
-            </button>
-          ))}
-          {Object.keys(hiddenLevels).length > 0 && (
-            <Button size="sm" variant="ghost" onClick={showAllLevels}>
-              全表示
-            </Button>
+      <div className="scene3d-controls">
+        <Dropdown icon="mixer-horizontal" label="表示設定">
+          <Switch size="sm" label="2.5D 重ね" checked={stackMode} onChange={(b: boolean) => setStackMode(b)} />
+          {stackMode ? (
+            <div className="spread-slider">
+              <Slider
+                min={1}
+                max={5}
+                step={0.5}
+                value={spread}
+                onChange={(n: number) => setSpread(n)}
+                label="展開"
+                showValue
+                unit="×"
+              />
+            </div>
+          ) : (
+            <>
+              <Checkbox label="壁" checked={showWalls} onChange={(b: boolean) => setShowWalls(b)} />
+              <Checkbox
+                label="開口"
+                checked={showOpenings}
+                onChange={(b: boolean) => setShowOpenings(b)}
+                disabled={!showWalls}
+              />
+            </>
           )}
-        </div>
-      )}
+        </Dropdown>
+        {levels.length > 1 && (
+          <Dropdown icon="layers" label="レベル表示">
+            {levels.map((l) => (
+              <Checkbox
+                key={l}
+                label={l}
+                checked={!hiddenLevels[l]}
+                onChange={() => toggleLevelHidden(l)}
+              />
+            ))}
+            {Object.keys(hiddenLevels).length > 0 && (
+              <Button size="sm" variant="ghost" onClick={showAllLevels}>
+                全表示
+              </Button>
+            )}
+          </Dropdown>
+        )}
+        <IconButton icon="frame" label="フィット" size="sm" variant="outline" onClick={fit} />
+      </div>
       {colors && <Legend colors={colors} />}
       {tooltip && model && (
         <div className="tooltip" style={{ left: tooltip.x + 14, top: tooltip.y + 10 }}>

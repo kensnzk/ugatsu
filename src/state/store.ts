@@ -64,6 +64,9 @@ export interface ViewerState {
   showWalls: boolean;
   showOpenings: boolean;
   showEditor: boolean;
+  showInspector: boolean;
+  /** プロパティパネルの幅 (px) — 左端ハンドルでリサイズ */
+  inspectorWidth: number;
   /** ライト/ダーク — DSトークンごと切り替わる ([data-theme]) */
   theme: Theme;
 
@@ -89,6 +92,8 @@ export interface ViewerState {
   setShowWalls(b: boolean): void;
   setShowOpenings(b: boolean): void;
   toggleEditor(): void;
+  toggleInspector(): void;
+  setInspectorWidth(w: number): void;
   toggleTheme(): void;
   select(path: string | null): void;
   hover(path: string | null): void;
@@ -175,6 +180,8 @@ export const useViewer = create<ViewerState>()((set, get) => {
     showWalls: true,
     showOpenings: true,
     showEditor: true,
+    showInspector: true,
+    inspectorWidth: 300,
     theme: initialTheme(),
 
     selected: null,
@@ -214,6 +221,8 @@ export const useViewer = create<ViewerState>()((set, get) => {
     setShowWalls: (showWalls) => set({ showWalls }),
     setShowOpenings: (showOpenings) => set({ showOpenings }),
     toggleEditor: () => set((s) => ({ showEditor: !s.showEditor })),
+    toggleInspector: () => set((s) => ({ showInspector: !s.showInspector })),
+    setInspectorWidth: (w) => set({ inspectorWidth: Math.min(Math.max(w, 220), 640) }),
     toggleTheme() {
       const theme: Theme = get().theme === "dark" ? "light" : "dark";
       applyTheme(theme);

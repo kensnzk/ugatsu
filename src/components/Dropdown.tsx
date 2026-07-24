@@ -1,0 +1,22 @@
+// アイコンのみのトリガで開く最小のドロップダウン (DSにMenuプリミティブが無いためトークン準拠の自前)
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { IconButton } from "../lib/ds.js";
+
+export function Dropdown({ icon, label, children }: { icon: string; label: string; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: PointerEvent) => {
+      if (!ref.current?.contains(e.target as Node)) setOpen(false);
+    };
+    window.addEventListener("pointerdown", onDown);
+    return () => window.removeEventListener("pointerdown", onDown);
+  }, [open]);
+  return (
+    <div className="dropdown" ref={ref}>
+      <IconButton icon={icon} label={label} size="sm" variant="outline" selected={open} onClick={() => setOpen((v) => !v)} />
+      {open && <div className="dropdown-pop">{children}</div>}
+    </div>
+  );
+}

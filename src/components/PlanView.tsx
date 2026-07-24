@@ -402,7 +402,6 @@ export function PlanView() {
             {l}
           </button>
         ))}
-        <span className="hint">ホイールで拡大 ・ ドラッグで移動</span>
         {vb && (
           <Button size="sm" variant="ghost" onClick={() => setVb(null)}>
             全体

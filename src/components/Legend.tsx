@@ -5,7 +5,7 @@ const MODE_LABEL: Record<string, string> = { use: "用途", type: "型", level: 
 export function Legend({ colors }: { colors: ModelColors }) {
   if (colors.legend.length === 0) return null;
   return (
-    <div className="legend panel">
+    <div className="legend">
       <span className="legend-title">{MODE_LABEL[colors.mode]}</span>
       {colors.legend.map(([key, color]) => (
         <span key={key} className="legend-item">

@@ -10,9 +10,26 @@ import { Toolbar } from "./Toolbar.js";
 export function App() {
   const mainView = useViewer((s) => s.mainView);
   const showEditor = useViewer((s) => s.showEditor);
+  const showInspector = useViewer((s) => s.showInspector);
+  const inspectorWidth = useViewer((s) => s.inspectorWidth);
+  const setInspectorWidth = useViewer((s) => s.setInspectorWidth);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
   const [dropping, setDropping] = useState(false);
+
+  // プロパティパネルの左端ドラッグでリサイズ
+  function startInspectorResize(e: React.PointerEvent) {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startW = inspectorWidth;
+    const move = (ev: PointerEvent) => setInspectorWidth(startW + (startX - ev.clientX));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   // .muro のドラッグ&ドロップ
   useEffect(() => {
@@ -59,8 +76,8 @@ export function App() {
   return (
     <div className="app">
       <Toolbar />
+      {/* キャンバスが主面。両サイドはその上に浮かぶ開閉可能なパネル */}
       <div className={`body ${showEditor ? "with-editor" : ""}`}>
-        {showEditor && <EditorPane />}
         <main className="main">
           {/* 3Dはタブ切替でもWebGLコンテキストを保つため display 切替 */}
           <div className="view-slot" style={{ display: mainView === "plan" ? "contents" : "none" }}>
@@ -71,7 +88,17 @@ export function App() {
           </div>
           {mainView === "table" && <AreaTable />}
         </main>
-        <Inspector />
+        {showEditor && (
+          <div className="side side-left">
+            <EditorPane />
+          </div>
+        )}
+        {showInspector && (
+          <div className="side side-right" style={{ width: inspectorWidth }}>
+            <div className="side-resize" onPointerDown={startInspectorResize} />
+            <Inspector />
+          </div>
+        )}
       </div>
       {dropping && <div className="drop-overlay">.muro をドロップして開く (複数ならレイヤー合成)</div>}
     </div>

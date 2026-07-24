@@ -8,6 +8,11 @@ body,
   height: 100%;
   margin: 0;
 }
+/* 開発者・デザイナー向けの高密度仕様 — 基本12px、見出しでも16pxまで */
+body {
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
 button {
   font: inherit;
   color: inherit;
@@ -24,7 +29,7 @@ input:focus-visible {
   background: transparent;
 }
 
-/* 机 (--bg-app) の上にすべてのパネルが浮かぶ (DSの浮遊パネル様式) */
+/* キャンバスが主面。サイド2枚だけが浮遊パネル */
 .app {
   height: 100%;
   display: flex;
@@ -32,16 +37,14 @@ input:focus-visible {
   background: var(--bg-app);
 }
 
-/* ---- ツールバー (浮遊) ---- */
+/* ---- ツールバー (固定・フラット) ---- */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-15) var(--space-3);
-  margin: var(--space-3) var(--space-3) 0;
-  background: var(--bg-panel);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  gap: var(--space-15);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border-1);
   flex-wrap: wrap;
 }
 .brand {
@@ -53,7 +56,7 @@ input:focus-visible {
 /* ワードマークはロゴ代わりのセリフ (DS: wordmarks in Libre Baskerville) */
 .brand strong {
   font-family: var(--font-serif);
-  font-size: var(--text-lg);
+  font-size: var(--text-md);
   font-weight: var(--weight-regular);
   line-height: 1;
 }
@@ -114,29 +117,55 @@ input:focus-visible {
   cursor: default;
 }
 
-/* ---- レイアウト — 浮遊パネルのグリッド (Linear様式) ---- */
+/* ---- レイアウト — 全面キャンバス + 両サイドのオーバーレイパネル ---- */
 .body {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: var(--space-3);
-  padding: var(--space-3);
-}
-.body.with-editor {
-  grid-template-columns: 400px 1fr 300px;
-}
-/* 中央は机 (canvas) — 一段暗い井戸。パネルは紙としてその上に */
-.main {
-  min-width: 0;
-  min-height: 0;
   position: relative;
+}
+.main {
+  position: absolute;
+  inset: 0;
   display: flex;
   flex-direction: column;
   background: var(--bg-canvas);
+}
+/* サイドパネル — キャンバスの上に浮かぶ。影は最小 (hairline + shadow-1) */
+.side {
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 10;
+  display: flex;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-1);
   border-radius: var(--radius-lg);
-  box-shadow: inset 0 0 0 1px var(--border-1);
+  box-shadow: var(--shadow-1);
   overflow: hidden;
+}
+.app {
+  --editor-w: 400px;
+}
+.side-left {
+  left: var(--space-2);
+  width: var(--editor-w);
+}
+/* エディタ開時はキャンバス隅のコントロールをパネルの右へ逃がす */
+.with-editor .plan-toolbar,
+.with-editor .scene3d-controls,
+.with-editor .legend {
+  left: calc(var(--editor-w) + var(--space-2) * 2);
+}
+.side-right {
+  right: var(--space-2);
+}
+.side-resize {
+  flex: none;
+  width: 5px;
+  cursor: col-resize;
+}
+.side-resize:hover {
+  background: var(--border-strong);
 }
 .view-slot {
   display: contents;
@@ -152,15 +181,13 @@ input:focus-visible {
   color: var(--text-3);
 }
 
-/* ---- エディタ (浮遊パネル) ---- */
+/* ---- エディタ (side-left の中身) ---- */
 .editor-pane {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   min-height: 0;
-  background: var(--bg-panel);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
-  overflow: hidden;
 }
 .editor-host {
   flex: 1;
@@ -213,24 +240,17 @@ input:focus-visible {
   flex-direction: column;
   position: relative;
 }
-/* レベル切替 — 図面上に浮かぶ */
+/* レベル切替 — キャンバス隅の最小コントロール (パネル装飾なし) */
 .plan-toolbar {
   position: absolute;
-  top: var(--space-25);
-  left: var(--space-25);
+  top: var(--space-2);
+  left: var(--space-2);
   z-index: 5;
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  padding: var(--space-2) var(--space-25);
-  background: var(--bg-panel);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
   flex-wrap: wrap;
-  max-width: calc(100% - var(--space-5));
-}
-.plan-toolbar .hint {
-  margin-left: var(--space-2);
+  max-width: calc(100% - var(--space-4));
 }
 .plan-svg {
   flex: 1;
@@ -293,35 +313,45 @@ input:focus-visible {
   padding: var(--space-4);
   line-height: var(--lh-base);
 }
-/* 浮遊パネル — 机の上の紙 (DS: 12px radius, shadow-panel, no border) */
+/* 小さなカード (メニュー・フォールバック表示用) — 影は最小 */
 .panel {
   background: var(--bg-panel);
-  border: none;
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
-  padding: var(--space-2) var(--space-25);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  padding: var(--space-15) var(--space-2);
 }
+/* キャンバス隅のビューコントロール — アイコンのみ・装飾なし */
 .scene3d-controls {
   position: absolute;
-  top: var(--space-25);
-  left: var(--space-25);
+  top: var(--space-2);
+  left: var(--space-2);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  z-index: 5;
-}
-.scene3d-levels {
-  position: absolute;
-  top: var(--space-25);
-  right: var(--space-25);
-  display: flex;
   gap: var(--space-1);
-  flex-wrap: wrap;
-  max-width: 300px;
   z-index: 5;
 }
 .spread-slider {
   width: 160px;
+}
+/* アイコントリガのドロップダウン */
+.dropdown {
+  position: relative;
+}
+.dropdown-pop {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-15);
+  min-width: 176px;
+  padding: var(--space-2);
+  background: var(--bg-panel);
+  border: 1px solid var(--border-1);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
 }
 .tooltip {
   position: fixed;
@@ -343,18 +373,19 @@ input:focus-visible {
   font-family: var(--font-mono);
 }
 
-/* ---- 凡例 ---- */
+/* ---- 凡例 — 隅の最小表示 (装飾なし) ---- */
 .legend {
   position: absolute;
-  left: var(--space-25);
-  bottom: var(--space-25);
+  left: var(--space-2);
+  bottom: var(--space-2);
   display: flex;
   align-items: center;
-  gap: var(--space-25);
+  gap: var(--space-2);
   flex-wrap: wrap;
-  max-width: calc(100% - var(--space-5));
+  max-width: calc(100% - var(--space-4));
   z-index: 5;
   font-size: var(--text-xs);
+  color: var(--text-2);
 }
 .legend-title {
   color: var(--text-3);
@@ -371,15 +402,16 @@ input:focus-visible {
   display: inline-block;
 }
 
-/* ---- 面積表 (机の上の帳票パネル) ---- */
+/* ---- 面積表 (机の上の帳票 — 影は最小) ---- */
 .area-table {
   flex: 1;
   overflow: auto;
-  margin: var(--space-3);
-  padding: var(--space-5) var(--space-6) var(--space-8);
+  margin: var(--space-2);
+  padding: var(--space-4) var(--space-5) var(--space-6);
   background: var(--bg-panel);
+  border: 1px solid var(--border-1);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow-1);
 }
 .table-head {
   display: flex;
@@ -456,13 +488,12 @@ input:focus-visible {
   font-weight: var(--weight-regular);
 }
 
-/* ---- インスペクタ (浮遊パネル) ---- */
+/* ---- インスペクタ (side-right の中身) ---- */
 .inspector {
+  flex: 1;
+  min-width: 0;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-4) var(--space-8);
-  background: var(--bg-panel);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-panel);
+  padding: var(--space-3) var(--space-3) var(--space-6);
 }
 .inspector h2 {
   font-size: var(--text-md);
@@ -548,7 +579,7 @@ input:focus-visible {
   place-items: center;
   background: var(--selection);
   border: 3px dashed var(--primary-line);
-  font-size: var(--text-xl);
+  font-size: var(--text-md);
   color: var(--primary-text);
   pointer-events: none;
 }

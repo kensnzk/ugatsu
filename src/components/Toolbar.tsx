@@ -29,12 +29,14 @@ export function Toolbar() {
   const colorMode = useViewer((s) => s.colorMode);
   const planLevel = useViewer((s) => s.planLevel);
   const showEditor = useViewer((s) => s.showEditor);
+  const showInspector = useViewer((s) => s.showInspector);
   const theme = useViewer((s) => s.theme);
   const setMainView = useViewer((s) => s.setMainView);
   const setColorMode = useViewer((s) => s.setColorMode);
   const setSource = useViewer((s) => s.setSource);
   const setFiles = useViewer((s) => s.setFiles);
   const toggleEditor = useViewer((s) => s.toggleEditor);
+  const toggleInspector = useViewer((s) => s.toggleInspector);
   const toggleTheme = useViewer((s) => s.toggleTheme);
 
   const fileInput = useRef<HTMLInputElement>(null);
@@ -48,6 +50,13 @@ export function Toolbar() {
 
   return (
     <header className="toolbar">
+      <IconButton
+        icon="pin-left"
+        label={showEditor ? "エディタを閉じる" : "エディタを開く"}
+        size="sm"
+        selected={showEditor}
+        onClick={toggleEditor}
+      />
       <div className="brand">
         <strong>ugatsu</strong>
         <span className={`status-dot ${parseError ? "bad" : "good"}`} title={parseError ? "パースエラー" : "整合"} />
@@ -146,14 +155,13 @@ export function Toolbar() {
         size="sm"
         onClick={toggleTheme}
       />
-      <Button
+      <IconButton
+        icon="pin-right"
+        label={showInspector ? "プロパティを閉じる" : "プロパティを開く"}
         size="sm"
-        variant="ghost"
-        icon={showEditor ? "chevron-left" : "chevron-right"}
-        onClick={toggleEditor}
-      >
-        エディタ
-      </Button>
+        selected={showInspector}
+        onClick={toggleInspector}
+      />
     </header>
   );
 }
