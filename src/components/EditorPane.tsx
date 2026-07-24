@@ -38,12 +38,13 @@ const muroLanguage = StreamLanguage.define<{ head: boolean }>({
   },
 });
 
+// DSトークンをそのままCSS変数参照で使う (テーマが変われば追従する)
 const theme = EditorView.theme({
-  "&": { height: "100%", fontSize: "12.5px", background: "#fdfcf9" },
-  ".cm-scroller": { fontFamily: "'SF Mono', Menlo, Consolas, monospace" },
-  ".cm-gutters": { background: "#f4f0e6", color: "#a49b8a", border: "none" },
-  ".cm-activeLine": { background: "#f4efe3" },
-  ".cm-activeLineGutter": { background: "#ece5d3" },
+  "&": { height: "100%", fontSize: "var(--text-xs)", background: "var(--bg-surface)" },
+  ".cm-scroller": { fontFamily: "var(--font-mono)" },
+  ".cm-gutters": { background: "var(--bg-subtle)", color: "var(--text-3)", border: "none" },
+  ".cm-activeLine": { background: "var(--bg-subtle)" },
+  ".cm-activeLineGutter": { background: "var(--bg-active)" },
   "&.cm-focused": { outline: "none" },
 });
 

@@ -12,6 +12,7 @@ import {
   type Space,
 } from "@kensnzk/koyu";
 import type { ModelColors } from "../lib/colors.js";
+import { token, tokenColor } from "../lib/theme.js";
 
 export interface SceneOptions {
   colors: ModelColors;
@@ -22,11 +23,13 @@ export interface SceneOptions {
   hiddenLevels: Record<string, true>;
 }
 
-const INK = 0x8d8578; // 壁 (立体では紙面より明るく — 空間の色が主役)
-const LINE = 0x4a4640; // 2.5Dの壁線
-const EDGE = 0x6b665e;
-const DOOR = 0xa87848;
-const GLASS = 0x88b0c8;
+// 描画色はDSトークンから導出 (遅延読取 — stylesheet適用後に評価される)
+const INK = () => tokenColor("--gray-400"); // 壁 (立体では紙面より明るく — 空間の色が主役)
+const LINE = () => tokenColor("--gray-700"); // 2.5Dの壁線
+const EDGE = () => tokenColor("--gray-500");
+const DOOR = () => tokenColor("--gray-600");
+const GLASS = () => tokenColor("--primary-300");
+const GHOST = () => tokenColor("--gray-400"); // 吹抜け・開放・柵などの淡い線
 const DEFAULT_H = 2400;
 const PLATE_T = 120;
 
@@ -102,8 +105,8 @@ function textSprite(text: string, sizeMm: number): THREE.Sprite {
   canvas.width = 256;
   canvas.height = 128;
   const ctx = canvas.getContext("2d")!;
-  ctx.font = "56px 'Hiragino Sans','Noto Sans JP',sans-serif";
-  ctx.fillStyle = "#5a554c";
+  ctx.font = `56px ${token("--font-sans")}`; // ds:allow 紋理内キャンバスの寸法 (UIのpxではない)
+  ctx.fillStyle = token("--text-2");
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 128, 64);
@@ -148,7 +151,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
           mat,
         );
         m.userData.path = s.path;
-        group.add(m, edgeLines(m, EDGE, 0.35));
+        group.add(m, edgeLines(m, EDGE(), 0.35));
         pickables.push(m);
       }
       continue;
@@ -170,7 +173,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
           new THREE.MeshBasicMaterial({ visible: false }),
         );
         m.userData.path = s.path;
-        group.add(m, edgeLines(m, 0x9a9384, 0.55));
+        group.add(m, edgeLines(m, GHOST(), 0.55));
         pickables.push(m);
       }
       continue;
@@ -189,7 +192,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
         mat,
       );
       m.userData.path = s.path;
-      group.add(m, edgeLines(m, EDGE, 0.45));
+      group.add(m, edgeLines(m, EDGE(), 0.45));
       pickables.push(m);
     }
   }
@@ -201,7 +204,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
     const plate = new THREE.Mesh(
       g,
-      new THREE.MeshLambertMaterial({ color: 0xe7e1d2, side: THREE.DoubleSide }),
+      new THREE.MeshLambertMaterial({ color: tokenColor("--gray-150"), side: THREE.DoubleSide }),
     );
     plate.position.y = -30;
     group.add(plate);
@@ -211,7 +214,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     group.add(
       new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(linePts),
-        new THREE.LineBasicMaterial({ color: 0x8a8171 }),
+        new THREE.LineBasicMaterial({ color: tokenColor("--gray-500") }),
       ),
     );
   }
@@ -234,11 +237,11 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     }
     for (const [level, bucket] of byLevel) {
       for (const [arr, mat] of [
-        [bucket.walls, new THREE.LineBasicMaterial({ color: LINE })],
-        [bucket.airs, new THREE.LineBasicMaterial({ color: 0x8d8578, transparent: true, opacity: 0.8 })],
+        [bucket.walls, new THREE.LineBasicMaterial({ color: LINE() })],
+        [bucket.airs, new THREE.LineBasicMaterial({ color: GHOST(), transparent: true, opacity: 0.8 })],
         [
           bucket.opens,
-          new THREE.LineDashedMaterial({ color: 0x9a9384, dashSize: 240, gapSize: 160 }),
+          new THREE.LineDashedMaterial({ color: GHOST(), dashSize: 240, gapSize: 160 }),
         ],
       ] as const) {
         if (arr.length === 0) continue;
@@ -263,15 +266,15 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       }
     }
   } else if (opts.showWalls) {
-    const wallMat = new THREE.MeshLambertMaterial({ color: INK });
-    const doorMat = new THREE.MeshLambertMaterial({ color: DOOR });
+    const wallMat = new THREE.MeshLambertMaterial({ color: INK() });
+    const doorMat = new THREE.MeshLambertMaterial({ color: DOOR() });
     const glassMat = new THREE.MeshLambertMaterial({
-      color: GLASS,
+      color: GLASS(),
       transparent: true,
       opacity: 0.55,
     });
     const railMat = new THREE.MeshLambertMaterial({
-      color: 0x9a9184,
+      color: GHOST(),
       transparent: true,
       opacity: 0.75,
     });

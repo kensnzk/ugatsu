@@ -1,9 +1,11 @@
+// CSSはコードより先に評価する — モジュール初期化でDSトークンを読む (src/lib/theme.ts) ため
+import "@kensnzk/koyu-design-system/styles.css";
+import "./styles.css";
 import { createRoot } from "react-dom/client";
 import { App } from "./components/App.js";
 import { DEFAULT_EXAMPLE } from "./examples.js";
 import { capturePristineHtml, decodeBase64 } from "./lib/download.js";
 import { useViewer } from "./state/store.js";
-import "./styles.css";
 
 // 配布用HTMLの自己複製のため、Reactがマウントする前の素のHTMLを確保する
 capturePristineHtml();

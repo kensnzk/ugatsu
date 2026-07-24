@@ -1,10 +1,12 @@
 // 色 — 開かれた語彙に対して安定した割当を行う。
 // 既知の語には固定色、未知の語には出現順でパレットから割り当てる (同一モデル内で安定)。
 import { effectiveUse, type Model, type Space } from "@kensnzk/koyu";
+import { token } from "./theme.js";
 
 export type ColorMode = "use" | "type" | "level";
 
-/** 紙 (平面図) と調和する落ち着いたパレット */
+/* 空間の色分け (用途/型/レベル) はカテゴリカルなデータ配色で、DSのUIトークンには無い語彙。
+   図面と調和する落ち着いた中間トーンとしてここだけ固有パレットを持つ (ds-check除外)。 */
 const PALETTE = [
   "#6d8ca0", // 青灰
   "#b08968", // 黄土
@@ -27,10 +29,12 @@ const USE_FIXED: Record<string, string> = {
   common: "#6d8ca0",
 };
 
-export const UNSET_COLOR = "#c9c2b4";
-export const VOID_COLOR = "#dedad0";
-export const SELECT_COLOR = "#d97706";
-export const ROUTE_COLOR = "#e8a33d";
+export const UNSET_COLOR = token("--gray-300");
+export const VOID_COLOR = token("--gray-200");
+/** 選択 = 藍 (DS: selection is indigo) */
+export const SELECT_COLOR = token("--primary");
+/** 経路 = 朱 (DS: vermilion = markup, the one thing demanding attention) */
+export const ROUTE_COLOR = token("--accent");
 
 export class ColorAssigner {
   private map = new Map<string, string>();

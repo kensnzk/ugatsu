@@ -11,13 +11,16 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "sync-examples": "node scripts/sync-examples.mjs",
-    "embed": "node scripts/embed-model.mjs"
+    "embed": "node scripts/embed-model.mjs",
+    "ds:check": "node scripts/ds-check.mjs",
+    "ds:update": "npm update @kensnzk/koyu-design-system && npm run ds:check"
   },
   "dependencies": {
     "@codemirror/language": "^6.10.0",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.35.0",
     "@kensnzk/koyu": "github:kensnzk/koyu",
+    "@kensnzk/koyu-design-system": "github:kensnzk/koyu-design-system",
     "codemirror": "^6.0.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
