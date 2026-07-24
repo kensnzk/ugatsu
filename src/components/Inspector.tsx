@@ -1,58 +1,21 @@
-// インスペクタ — 選択した空間の属性・隣接・経路。
-// 「この室とこの室は繋がっているか」「扉をいくつ通るか」が変換なしにグラフへの問いになる。
-import { useMemo } from "react";
+// インスペクタ — 選択した空間の属性。
 import {
   areaM2,
   displayName,
   effectiveUse,
   heff,
   isSemiOutdoor,
-  neighbors,
   siteReport,
-  type Boundary,
 } from "@kensnzk/koyu";
-import { Select } from "../lib/ds.js";
 import { useViewer } from "../state/store.js";
-
-function boundaryMark(b: Boundary, passable: boolean, doors: number): string {
-  switch (b.kind) {
-    case "open":
-      return "〰 開放";
-    case "stair":
-      return "↕ 階段";
-    case "shaft":
-      return "↕ シャフト (通行不可)";
-    case "void":
-      return "↕ 吹抜け";
-    default:
-      if (b.air) return passable ? `¦ 柵 — 扉${doors}` : "¦ 手すり・柵";
-      return passable ? `— 扉${doors}` : "│ 壁";
-  }
-}
 
 export function Inspector() {
   const model = useViewer((s) => s.model);
-  const modelKey = useViewer((s) => s.modelKey);
   const selected = useViewer((s) => s.selected);
-  const routeTarget = useViewer((s) => s.routeTarget);
-  const route = useViewer((s) => s.route);
-  const select = useViewer((s) => s.select);
-  const setRouteTarget = useViewer((s) => s.setRouteTarget);
   const checkErrors = useViewer((s) => s.checkErrors);
   const checkWarnings = useViewer((s) => s.checkWarnings);
 
   const space = model && selected ? model.spaces.get(selected) : undefined;
-  const ns = useMemo(
-    () => (model && space ? neighbors(model, space.path) : []),
-    [model, modelKey, space],
-  );
-  const allPaths = useMemo(
-    () =>
-      model
-        ? [...model.spaces.values()].map((s) => ({ path: s.path, label: `${s.path} ${displayName(s)}` }))
-        : [],
-    [model, modelKey],
-  );
 
   if (!model) return <aside className="inspector" />;
 
@@ -188,51 +151,6 @@ export function Inspector() {
           ))}
         </tbody>
       </table>
-
-      <h3>隣接 — 境界 {ns.length}</h3>
-      <ul className="neighbors">
-        {ns.map((n, i) => (
-          <li key={i}>
-            <button className="link" onClick={() => select(n.space.path)}>
-              {displayName(n.space)}
-            </button>
-            <span className="muted"> {boundaryMark(n.boundary, n.passable, n.doors)}</span>
-            {typeof n.boundary.attrs["fire"] === "number" && (
-              <span className="badge">耐火{n.boundary.attrs["fire"]}</span>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <h3>経路 — 扉をいくつ通るか</h3>
-      <Select
-        size="sm"
-        fullWidth
-        value={routeTarget ?? ""}
-        onChange={(e: { target: { value: string } }) => setRouteTarget(e.target.value || null)}
-        options={[
-          { value: "", label: "行き先を選ぶ…" },
-          ...allPaths
-            .filter((p) => p.path !== space.path)
-            .map((p) => ({ value: p.path, label: p.label })),
-        ]}
-      />
-      {route === "unreachable" && <p className="route-result">✖ 到達できません</p>}
-      {route && route !== "unreachable" && (
-        <div className="route-result">
-          <strong>扉 {route.doors} 枚</strong>
-          <ol>
-            {route.path.map((p) => (
-              <li key={p}>
-                <button className="link" onClick={() => select(p)}>
-                  {model.spaces.get(p) ? displayName(model.spaces.get(p)!) : p}
-                </button>
-                <span className="muted path"> {p}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
     </aside>
   );
 }

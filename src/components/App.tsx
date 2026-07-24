@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { useViewer } from "../state/store.js";
+import { Tabs } from "../lib/ds.js";
+import { useViewer, type MainView } from "../state/store.js";
 import { AreaTable } from "./AreaTable.js";
 import { EditorPane } from "./EditorPane.js";
 import { Inspector } from "./Inspector.js";
@@ -8,8 +9,15 @@ import { Scene3D } from "./Scene3D.js";
 import { Toolbar } from "./Toolbar.js";
 import { RoundIcon } from "./ui.js";
 
+const VIEW_ITEMS: Array<{ value: MainView; label: string }> = [
+  { value: "plan", label: "平面" },
+  { value: "3d", label: "3D" },
+  { value: "table", label: "面積表" },
+];
+
 export function App() {
   const mainView = useViewer((s) => s.mainView);
+  const setMainView = useViewer((s) => s.setMainView);
   const showEditor = useViewer((s) => s.showEditor);
   const showInspector = useViewer((s) => s.showInspector);
   const inspectorWidth = useViewer((s) => s.inspectorWidth);
@@ -80,7 +88,10 @@ export function App() {
     <div className="app">
       <Toolbar />
       {/* キャンバスが主面。両サイドはその上に浮かぶ開閉可能なパネル */}
-      <div className={`body ${showEditor ? "with-editor" : ""}`}>
+      <div
+        className={`body ${showEditor ? "with-editor" : ""} ${showInspector ? "with-inspector" : ""}`}
+        style={{ "--inspector-w": `${inspectorWidth}px` } as React.CSSProperties}
+      >
         <main className="main">
           {/* 3Dはタブ切替でもWebGLコンテキストを保つため display 切替 */}
           <div className="view-slot" style={{ display: mainView === "plan" ? "contents" : "none" }}>
@@ -91,6 +102,15 @@ export function App() {
           </div>
           {mainView === "table" && <AreaTable />}
         </main>
+        {/* ビュー切替 — キャンバス上のセグメント */}
+        <div className="view-switch">
+          <Tabs
+            variant="segmented"
+            items={VIEW_ITEMS}
+            value={mainView}
+            onChange={(v: string) => setMainView(v as MainView)}
+          />
+        </div>
         {showEditor ? (
           <div className="side side-left">
             <EditorPane />

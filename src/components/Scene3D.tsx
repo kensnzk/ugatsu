@@ -22,11 +22,16 @@ export function Scene3D() {
     raycaster: THREE.Raycaster;
     grid: THREE.GridHelper;
     hemi: THREE.HemisphereLight;
+    /** 再描画の要求 — 変化があったときだけ描く (アイドル時のGPU負荷ゼロ) */
+    invalidate: () => void;
     built: BuiltScene | null;
   } | null>(null);
   const [tooltip, setTooltip] = useState<{ x: number; y: number; path: string } | null>(null);
   const [glError, setGlError] = useState(false);
-  // 再試行の合図 (WebGL失敗後にコンテキスト作成をやり直す)
+  // コンテキスト喪失中 (three標準の復帰待ち)。自動で作り直さない —
+  // 喪失→即再作成のループはGPUプロセスを落とし、ブラウザ全体のWebGL無効化を招く
+  const [glLost, setGlLost] = useState(false);
+  // 手動再試行の合図 (復帰が来ないときにユーザー操作でのみ作り直す)
   const [glRetry, setGlRetry] = useState(0);
 
   const model = useViewer((s) => s.model);
@@ -42,6 +47,7 @@ export function Scene3D() {
   const hovered = useViewer((s) => s.hovered);
   const route = useViewer((s) => s.route);
   const theme = useViewer((s) => s.theme);
+  const mainView = useViewer((s) => s.mainView);
   const select = useViewer((s) => s.select);
   const hover = useViewer((s) => s.hover);
   const setStackMode = useViewer((s) => s.setStackMode);
@@ -63,7 +69,7 @@ export function Scene3D() {
     if (!host) return;
     let renderer: THREE.WebGLRenderer;
     try {
-      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
     } catch (err) {
       // GPU無効環境 (アクセラレーション停止など) ではコンテキストが作れない
       console.error("WebGL初期化に失敗:", err);
@@ -73,6 +79,21 @@ export function Scene3D() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.setClearColor(tokenColor("--bg-canvas"));
     host.appendChild(renderer.domElement);
+    // コンテキスト喪失時はthree標準の復帰 (contextrestored) を待つだけ。
+    // 作り直しはしない — ここで再作成ループを作るとGPUプロセスごと落ちる
+    const onContextLost = () => {
+      console.warn("WebGLコンテキスト喪失 — 復帰を待ちます");
+      setGlLost(true);
+    };
+    const onContextRestored = () => {
+      console.info("WebGLコンテキスト復帰");
+      // threeは復帰時に内部モジュールを作り直し clearColor が黒に戻る — 再適用する
+      renderer.setClearColor(tokenColor("--bg-canvas"));
+      setGlLost(false);
+      worldRef.current?.invalidate();
+    };
+    renderer.domElement.addEventListener("webglcontextlost", onContextLost);
+    renderer.domElement.addEventListener("webglcontextrestored", onContextRestored);
     const scene = new THREE.Scene();
     const hemi = new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05); // ds:allow 白色光 (物理値)
     scene.add(hemi);
@@ -88,6 +109,28 @@ export function Scene3D() {
     controls.enableDamping = true;
     controls.dampingFactor = 0.12;
 
+    // オンデマンド描画: 変化 (操作・モデル・テーマ) があったフレームだけ描く。
+    // dampingの残りがある間は自走し、収まったら止まる — アイドル時のGPU負荷はゼロ
+    let raf = 0;
+    let rendering = false;
+    const frame = () => {
+      let moving = false;
+      try {
+        moving = controls.update();
+        renderer.render(scene, camera);
+      } finally {
+        // 例外でもフラグを固めない (以後のinvalidateが効かなくなるのを防ぐ)
+        if (moving) raf = requestAnimationFrame(frame);
+        else rendering = false;
+      }
+    };
+    const invalidate = () => {
+      if (rendering) return;
+      rendering = true;
+      raf = requestAnimationFrame(frame);
+    };
+    controls.addEventListener("change", invalidate);
+
     const world: NonNullable<typeof worldRef.current> = {
       renderer,
       scene,
@@ -96,17 +139,11 @@ export function Scene3D() {
       raycaster: new THREE.Raycaster(),
       grid,
       hemi,
+      invalidate,
       built: null,
     };
     worldRef.current = world;
-
-    let raf = 0;
-    const loop = () => {
-      controls.update();
-      renderer.render(scene, camera);
-      raf = requestAnimationFrame(loop);
-    };
-    loop();
+    setGlLost(false);
 
     const resize = () => {
       const w = host.clientWidth;
@@ -115,6 +152,7 @@ export function Scene3D() {
       renderer.setSize(w, h);
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
+      invalidate();
     };
     resize();
     const ro = new ResizeObserver(resize);
@@ -123,8 +161,11 @@ export function Scene3D() {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      controls.removeEventListener("change", invalidate);
       controls.dispose();
       if (world.built) disposeGroup(world.built.group);
+      renderer.domElement.removeEventListener("webglcontextlost", onContextLost);
+      renderer.domElement.removeEventListener("webglcontextrestored", onContextRestored);
       renderer.dispose();
       // GLコンテキストを即時解放する (GCまかせだと再マウントの繰返しで
       // コンテキスト上限に達し、ChromeのGPUプロセスを巻き込みやすい)
@@ -133,6 +174,11 @@ export function Scene3D() {
       worldRef.current = null;
     };
   }, [glRetry]);
+
+  // 3Dタブへ戻ったとき・復帰したときに一度描く (以後は変化駆動)
+  useEffect(() => {
+    if (mainView === "3d" && !glLost) worldRef.current?.invalidate();
+  }, [mainView, glLost, glRetry]);
 
   // テーマ切替 — 机・地面色・グリッドを新トークンで作り直す
   useEffect(() => {
@@ -147,6 +193,7 @@ export function Scene3D() {
     grid.position.y = -0.02;
     world.scene.add(grid);
     world.grid = grid;
+    world.invalidate();
   }, [theme]);
 
   // モデル / 表示設定の変化でシーンを組み直す
@@ -158,7 +205,10 @@ export function Scene3D() {
       disposeGroup(world.built.group);
       world.built = null;
     }
-    if (!model || !colors) return;
+    if (!model || !colors) {
+      world.invalidate();
+      return;
+    }
     const built = buildScene(model, {
       colors,
       stackMode,
@@ -171,13 +221,13 @@ export function Scene3D() {
     world.built = built;
     applyHighlights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels, theme]);
+  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels, theme, glRetry]);
 
   // カメラフィット (ファイル切替・モード切替のとき)
   useEffect(() => {
     fit();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fitKey, stackMode, spread]);
+  }, [fitKey, stackMode, spread, glRetry]);
 
   function fit() {
     const world = worldRef.current;
@@ -190,6 +240,7 @@ export function Scene3D() {
     world.controls.target.copy(center);
     world.camera.position.set(center.x + radius, center.y + radius * 0.85, center.z + radius);
     world.camera.updateProjectionMatrix();
+    world.invalidate();
   }
 
   function applyHighlights() {
@@ -206,6 +257,7 @@ export function Scene3D() {
       else mat.emissive.set(0x000000); // ds:allow 発光オフ (物理値)
       mat.emissiveIntensity = path === selected ? 0.5 : 0.35;
     }
+    world.invalidate();
   }
   useEffect(applyHighlights, [selected, hovered, route, modelKey, stackMode, theme]);
 
@@ -273,6 +325,21 @@ export function Scene3D() {
           if (d && Math.hypot(ev.clientX - d.x, ev.clientY - d.y) < 5) select(pick(ev));
         }}
       />
+      {glLost && (
+        <div className="scene3d-fallback panel">
+          <strong>3Dの描画コンテキストが失われました</strong>
+          <span>ブラウザの復帰を待っています。戻らない場合は再試行してください。</span>
+          <Button
+            size="sm"
+            onClick={() => {
+              setGlLost(false);
+              setGlRetry((n) => n + 1);
+            }}
+          >
+            再試行
+          </Button>
+        </div>
+      )}
       <div className="scene3d-controls">
         <Dropdown icon="mixer-horizontal" label="表示設定">
           <Switch size="sm" label="2.5D 重ね" checked={stackMode} onChange={(b: boolean) => setStackMode(b)} />

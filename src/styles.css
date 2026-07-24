@@ -87,17 +87,11 @@ input:focus-visible {
   color: var(--text-2);
   font-size: var(--text-xs);
 }
-/* 表示切替 — DS Tabs (segmented) の置き場 */
-.view-tabs {
-  display: flex;
+.toolbar-right {
   margin-left: auto;
-}
-.color-mode {
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  color: var(--text-2);
-  font-size: var(--text-xs);
 }
 .export-menu {
   position: relative;
@@ -198,6 +192,14 @@ input:focus-visible {
 }
 .side-reopen-right {
   right: var(--space-2);
+}
+/* ビュー切替 — キャンバス上部中央のセグメント */
+.view-switch {
+  position: absolute;
+  top: var(--space-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9;
 }
 .view-slot {
   display: contents;
@@ -371,6 +373,20 @@ input:focus-visible {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
 }
+/* ドロップダウン内の行アイテム (例リスト等) */
+.dd-item {
+  border: none;
+  background: none;
+  text-align: left;
+  padding: var(--space-15) var(--space-2);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+.dd-item:hover {
+  background: var(--bg-hover);
+}
 .tooltip {
   position: fixed;
   z-index: 40;
@@ -424,12 +440,19 @@ input:focus-visible {
 .area-table {
   flex: 1;
   overflow: auto;
-  margin: var(--space-2);
+  margin: var(--space-10) var(--space-2) var(--space-2);
   padding: var(--space-4) var(--space-5) var(--space-6);
   background: var(--bg-panel);
   border: 1px solid var(--border-1);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-1);
+}
+/* サイドパネルが開いているときは帳票を重ならない幅に寄せる (帳票はパンできない) */
+.with-editor .area-table {
+  margin-left: calc(var(--editor-w) + var(--space-2) * 2);
+}
+.with-inspector .area-table {
+  margin-right: calc(var(--inspector-w, 300px) + var(--space-2) * 2);
 }
 .table-head {
   display: flex;
@@ -540,16 +563,6 @@ input:focus-visible {
   color: var(--text-2);
   width: 40%;
 }
-.neighbors {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-.neighbors li {
-  padding: var(--space-05) 0;
-  border-bottom: 1px solid var(--border-1);
-  font-size: var(--text-xs);
-}
 /* リンクは藍、下線はhover時のみ (DS) */
 .link {
   border: none;
@@ -563,25 +576,6 @@ input:focus-visible {
   color: var(--primary-hover);
   text-decoration: underline;
   text-underline-offset: 3px;
-}
-.badge {
-  background: var(--bg-subtle);
-  color: var(--text-2);
-  border-radius: var(--radius-full);
-  padding: 0 var(--space-15);
-  font-size: var(--text-xs);
-  margin-left: var(--space-15);
-}
-.route-result {
-  margin-top: var(--space-2);
-  font-size: var(--text-xs);
-}
-.route-result ol {
-  margin: var(--space-15) 0 0;
-  padding-left: var(--space-5);
-}
-.route-result li {
-  padding: var(--space-05) 0;
 }
 .hint {
   color: var(--text-3);
