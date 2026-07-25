@@ -6,6 +6,7 @@ import { Annotation } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { basicSetup } from "codemirror";
 import { useEffect, useRef } from "react";
+import { Button, Icon, Tabs } from "../lib/ds.js";
 import { useViewer } from "../state/store.js";
 
 const External = Annotation.define<boolean>();
@@ -45,6 +46,10 @@ const theme = EditorView.theme({
   ".cm-gutters": { background: "var(--bg-subtle)", color: "var(--text-3)", border: "none" },
   ".cm-activeLine": { background: "var(--bg-subtle)" },
   ".cm-activeLineGutter": { background: "var(--bg-active)" },
+  ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+    background: "var(--selection-bg) !important",
+  },
+  ".cm-cursor": { borderLeftColor: "var(--selection-line)" },
   "&.cm-focused": { outline: "none" },
 });
 
@@ -147,51 +152,90 @@ export function EditorPane() {
     }
   }
 
-  const ok = !parseError && checkErrors.length === 0;
+  const diagnosticsClass =
+    parseError || checkErrors.length > 0
+      ? "diag-error"
+      : checkWarnings.length > 0
+        ? "diag-warn"
+        : "diag-ok";
 
   return (
     <div className="editor-pane">
       {fileNames.length > 1 && (
         <div className="file-tabs">
-          {fileNames.map((f) => (
-            <button
-              key={f}
-              className={`file-tab ${f === activeFile ? "file-tab-on" : ""}`}
-              onClick={() => switchTab(f)}
-              title={f === entry ? `${f} — base層 (合成の入口)` : f}
-            >
-              {f === entry ? `◈ ${f}` : f}
-            </button>
-          ))}
+          <Tabs
+            items={fileNames.map((f) => ({
+              value: f,
+              label: (
+                <span title={f === entry ? `${f} — base層 (合成の入口)` : f}>{f}</span>
+              ),
+              icon: f === entry ? "layers" : "file",
+            }))}
+            value={activeFile}
+            onChange={switchTab}
+            style={{ borderBottom: "none", gap: "var(--space-4)" }}
+          />
         </div>
       )}
       <div ref={hostRef} className="editor-host" />
-      <div className={`diagnostics ${parseError ? "diag-error" : ok ? "diag-ok" : "diag-warn"}`}>
+      <div className={`diagnostics ${diagnosticsClass}`}>
         {parseError ? (
-          <button className="diag-line" onClick={() => jumpTo(parseError.file, parseError.line)}>
-            ✖ {parseError.message}
-            <span className="diag-note">(表示は最後に整合したモデル)</span>
-          </button>
+          <div className="diag-line diag-action">
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              icon="cross-circled"
+              style={{ justifyContent: "flex-start", color: "inherit" }}
+              onClick={() => jumpTo(parseError.file, parseError.line)}
+            >
+              <span>{parseError.message}</span>
+              <span className="diag-note">(表示は最後に整合したモデル)</span>
+            </Button>
+          </div>
         ) : (
           <>
             <div className="diag-line">
-              {checkErrors.length === 0
-                ? `✔ 整合 — 空間 ${model?.spaces.size ?? 0} / 境界 ${model?.boundaries.length ?? 0}${
-                    fileNames.length > 1 ? ` (${fileNames.length}レイヤー合成)` : ""
-                  }`
-                : `✖ check エラー ${checkErrors.length}`}
-              {checkWarnings.length > 0 && ` ・ 警告 ${checkWarnings.length}`}
+              <Icon
+                name={
+                  checkErrors.length > 0
+                    ? "cross-circled"
+                    : checkWarnings.length > 0
+                      ? "exclamation-triangle"
+                      : "check-circled"
+                }
+                size={14}
+              />
+              <span>
+                {checkErrors.length === 0
+                  ? `整合 — 空間 ${model?.spaces.size ?? 0} / 境界 ${model?.boundaries.length ?? 0}${
+                      fileNames.length > 1 ? ` (${fileNames.length}レイヤー合成)` : ""
+                    }`
+                  : `check エラー ${checkErrors.length}`}
+                {checkWarnings.length > 0 && ` ・ 警告 ${checkWarnings.length}`}
+              </span>
             </div>
-            {[...checkErrors.map((m) => ["✖", m] as const), ...checkWarnings.map((m) => ["⚠", m] as const)].map(
-              ([mark, m], i) => {
-                const ref = parseRef(m);
-                return (
-                  <button key={i} className="diag-item" onClick={() => ref && jumpTo(ref.file, ref.line)}>
-                    {mark} {m}
-                  </button>
-                );
-              },
-            )}
+            {[
+              ...checkErrors.map((m) => ["cross-circled", m] as const),
+              ...checkWarnings.map((m) => ["exclamation-triangle", m] as const),
+            ].map(([icon, m], i) => {
+              const ref = parseRef(m);
+              return (
+                <div key={i} className="diag-item">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    fullWidth
+                    icon={icon}
+                    style={{ justifyContent: "flex-start", color: "inherit" }}
+                    disabled={!ref}
+                    onClick={() => ref && jumpTo(ref.file, ref.line)}
+                  >
+                    {m}
+                  </Button>
+                </div>
+              );
+            })}
           </>
         )}
       </div>

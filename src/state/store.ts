@@ -63,6 +63,8 @@ export interface ViewerState {
   spread: number;
   showWalls: boolean;
   showOpenings: boolean;
+  /** 通り芯 / Cartesian grid は検査補助。既定では図面へ出さない */
+  showGrid: boolean;
   showEditor: boolean;
   showInspector: boolean;
   /** プロパティパネルの幅 (px) — 左端ハンドルでリサイズ */
@@ -91,6 +93,7 @@ export interface ViewerState {
   setSpread(n: number): void;
   setShowWalls(b: boolean): void;
   setShowOpenings(b: boolean): void;
+  setShowGrid(b: boolean): void;
   toggleEditor(): void;
   toggleInspector(): void;
   setInspectorWidth(w: number): void;
@@ -179,6 +182,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     spread: 1,
     showWalls: true,
     showOpenings: true,
+    showGrid: false,
     showEditor: true,
     showInspector: true,
     inspectorWidth: 300,
@@ -220,6 +224,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     setSpread: (spread) => set({ spread }),
     setShowWalls: (showWalls) => set({ showWalls }),
     setShowOpenings: (showOpenings) => set({ showOpenings }),
+    setShowGrid: (showGrid) => set({ showGrid }),
     toggleEditor: () => set((s) => ({ showEditor: !s.showEditor })),
     toggleInspector: () => set((s) => ({ showInspector: !s.showInspector })),
     setInspectorWidth: (w) => set({ inspectorWidth: Math.min(Math.max(w, 220), 640) }),

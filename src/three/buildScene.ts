@@ -23,13 +23,13 @@ export interface SceneOptions {
   hiddenLevels: Record<string, true>;
 }
 
-// 描画色はDSトークンから遅延導出。light/darkで反転が要る線はセマンティック側を使う
-const INK = () => tokenColor("--gray-400"); // 壁 (中間調 — 両テーマで成立、空間の色が主役)
-const LINE = () => tokenColor("--text-2"); // 2.5Dの壁線 (反転)
-const EDGE = () => tokenColor("--gray-500");
-const DOOR = () => tokenColor("--gray-600");
-const GLASS = () => tokenColor("--primary-300");
-const GHOST = () => tokenColor("--gray-400"); // 吹抜け・開放・柵などの淡い線
+// 描画色は drawing セマンティックから遅延導出し、製品クロームとデータを分離する。
+const INK = () => tokenColor("--drawing-line-muted"); // 壁面 (空間の色を主役にする)
+const LINE = () => tokenColor("--drawing-line"); // 2.5Dの壁線
+const EDGE = () => tokenColor("--drawing-derived");
+const DOOR = () => tokenColor("--drawing-line");
+const GLASS = () => tokenColor("--drawing-line-muted");
+const GHOST = () => tokenColor("--drawing-line-muted"); // 吹抜け・開放・柵
 const DEFAULT_H = 2400;
 const PLATE_T = 120;
 
@@ -106,7 +106,7 @@ function textSprite(text: string, sizeMm: number): THREE.Sprite {
   canvas.height = 128;
   const ctx = canvas.getContext("2d")!;
   ctx.font = `56px ${token("--font-sans")}`; // ds:allow 紋理内キャンバスの寸法 (UIのpxではない)
-  ctx.fillStyle = token("--text-2");
+  ctx.fillStyle = token("--ink-2");
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, 128, 64);
@@ -204,7 +204,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
     const plate = new THREE.Mesh(
       g,
-      new THREE.MeshLambertMaterial({ color: tokenColor("--bg-subtle"), side: THREE.DoubleSide }),
+      new THREE.MeshLambertMaterial({ color: tokenColor("--wash-1"), side: THREE.DoubleSide }),
     );
     plate.position.y = -30;
     group.add(plate);
@@ -214,7 +214,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     group.add(
       new THREE.Line(
         new THREE.BufferGeometry().setFromPoints(linePts),
-        new THREE.LineBasicMaterial({ color: tokenColor("--text-3") }),
+        new THREE.LineBasicMaterial({ color: tokenColor("--drawing-derived") }),
       ),
     );
   }

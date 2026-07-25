@@ -10,7 +10,7 @@ import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
-import { RoundIcon } from "./ui.js";
+import { ToolIcon } from "./ui.js";
 
 export function Scene3D() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -42,6 +42,7 @@ export function Scene3D() {
   const spread = useViewer((s) => s.spread);
   const showWalls = useViewer((s) => s.showWalls);
   const showOpenings = useViewer((s) => s.showOpenings);
+  const showGrid = useViewer((s) => s.showGrid);
   const hiddenLevels = useViewer((s) => s.hiddenLevels);
   const selected = useViewer((s) => s.selected);
   const hovered = useViewer((s) => s.hovered);
@@ -54,6 +55,7 @@ export function Scene3D() {
   const setSpread = useViewer((s) => s.setSpread);
   const setShowWalls = useViewer((s) => s.setShowWalls);
   const setShowOpenings = useViewer((s) => s.setShowOpenings);
+  const setShowGrid = useViewer((s) => s.setShowGrid);
   const toggleLevelHidden = useViewer((s) => s.toggleLevelHidden);
   const showAllLevels = useViewer((s) => s.showAllLevels);
 
@@ -95,12 +97,13 @@ export function Scene3D() {
     renderer.domElement.addEventListener("webglcontextlost", onContextLost);
     renderer.domElement.addEventListener("webglcontextrestored", onContextRestored);
     const scene = new THREE.Scene();
-    const hemi = new THREE.HemisphereLight(0xffffff, tokenColor("--gray-300"), 1.05); // ds:allow 白色光 (物理値)
+    const hemi = new THREE.HemisphereLight(0xffffff, tokenColor("--line"), 1.05); // ds:allow 白色光 (物理値)
     scene.add(hemi);
     const dir = new THREE.DirectionalLight(0xffffff, 0.85); // ds:allow 白色光 (物理値)
     dir.position.set(30, 60, 40);
     scene.add(dir);
-    const grid = new THREE.GridHelper(120, 120, tokenColor("--border-2"), tokenColor("--border-1"));
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--drawing-line-muted"), tokenColor("--border-1"));
+    grid.visible = useViewer.getState().showGrid;
     grid.position.y = -0.02;
     scene.add(grid);
     const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2000);
@@ -185,16 +188,25 @@ export function Scene3D() {
     const world = worldRef.current;
     if (!world) return;
     world.renderer.setClearColor(tokenColor("--bg-canvas"));
-    world.hemi.groundColor.set(tokenColor("--gray-300"));
+    world.hemi.groundColor.set(tokenColor("--line"));
     world.scene.remove(world.grid);
     world.grid.geometry.dispose();
     (world.grid.material as THREE.Material).dispose();
-    const grid = new THREE.GridHelper(120, 120, tokenColor("--border-2"), tokenColor("--border-1"));
+    const grid = new THREE.GridHelper(120, 120, tokenColor("--drawing-line-muted"), tokenColor("--border-1"));
+    grid.visible = useViewer.getState().showGrid;
     grid.position.y = -0.02;
     world.scene.add(grid);
     world.grid = grid;
     world.invalidate();
   }, [theme]);
+
+  // Cartesian grid は関係モデルの原本ではなく検査補助。必要なときだけ表示する。
+  useEffect(() => {
+    const world = worldRef.current;
+    if (!world) return;
+    world.grid.visible = showGrid;
+    world.invalidate();
+  }, [showGrid]);
 
   // モデル / 表示設定の変化でシーンを組み直す
   useEffect(() => {
@@ -253,7 +265,7 @@ export function Scene3D() {
       const path = m.userData.path as string;
       if (path === selected) mat.emissive.set(selectColor());
       else if (onRoute.has(path)) mat.emissive.set(routeColor());
-      else if (path === hovered) mat.emissive.set(tokenColor("--text-3"));
+      else if (path === hovered) mat.emissive.set(tokenColor("--drawing-derived"));
       else mat.emissive.set(0x000000); // ds:allow 発光オフ (物理値)
       mat.emissiveIntensity = path === selected ? 0.5 : 0.35;
     }
@@ -343,6 +355,7 @@ export function Scene3D() {
       <div className="scene3d-controls">
         <Dropdown icon="mixer-horizontal" label="表示設定">
           <Switch size="sm" label="2.5D 重ね" checked={stackMode} onChange={(b: boolean) => setStackMode(b)} />
+          <Checkbox label="グリッド" checked={showGrid} onChange={(b: boolean) => setShowGrid(b)} />
           {stackMode ? (
             <div className="spread-slider">
               <Slider
@@ -385,11 +398,11 @@ export function Scene3D() {
             )}
           </Dropdown>
         )}
-        <RoundIcon icon="frame" label="フィット" variant="outline" onClick={fit} />
+        <ToolIcon icon="frame" label="フィット" variant="outline" onClick={fit} />
       </div>
       {colors && <Legend colors={colors} />}
       {tooltip && model && (
-        <div className="tooltip" style={{ left: tooltip.x + 14, top: tooltip.y + 10 }}>
+        <div className="tooltip" style={{ left: tooltip.x, top: tooltip.y }}>
           {(() => {
             const s = model.spaces.get(tooltip.path);
             if (!s) return tooltip.path;

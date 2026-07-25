@@ -2,9 +2,12 @@ import { useRef, useState } from "react";
 import { svgPlan, toCanonical } from "@kensnzk/koyu";
 import { EXAMPLES } from "../examples.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
+import { Button, Icon } from "../lib/ds.js";
 import { useViewer } from "../state/store.js";
 import { Dropdown } from "./Dropdown.js";
-import { RoundIcon } from "./ui.js";
+import { ToolIcon } from "./ui.js";
+
+const MENU_ITEM_STYLE = { justifyContent: "flex-start" } as const;
 
 export function Toolbar() {
   const files = useViewer((s) => s.files);
@@ -13,6 +16,8 @@ export function Toolbar() {
   const model = useViewer((s) => s.model);
   const source = useViewer((s) => s.source);
   const parseError = useViewer((s) => s.parseError);
+  const checkErrors = useViewer((s) => s.checkErrors);
+  const checkWarnings = useViewer((s) => s.checkWarnings);
   const planLevel = useViewer((s) => s.planLevel);
   const theme = useViewer((s) => s.theme);
   const setSource = useViewer((s) => s.setSource);
@@ -23,6 +28,15 @@ export function Toolbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const layerCount = Object.keys(files).length;
   const base = entry.replace(/\.muro$/, "");
+  const status = parseError || checkErrors.length > 0 ? "error" : checkWarnings.length > 0 ? "warning" : "ready";
+  const statusLabel =
+    status === "error"
+      ? `要修正${checkErrors.length > 0 ? ` ${checkErrors.length}` : ""}`
+      : status === "warning"
+        ? `警告 ${checkWarnings.length}`
+        : "整合";
+  const statusIcon =
+    status === "error" ? "cross-circled" : status === "warning" ? "exclamation-triangle" : "check-circled";
 
   async function openFile(f: File) {
     setSource(await f.text(), f.name);
@@ -31,23 +45,31 @@ export function Toolbar() {
   return (
     <header className="toolbar">
       <div className="brand">
-        <strong>ugatsu</strong>
+        <strong>UGATSU</strong>
       </div>
-      {/* 開いているファイル — ピルで浮かべる */}
-      <span className="file-pill" title={parseError ? "パースエラー" : "整合"}>
-        <span className={`status-dot ${parseError ? "bad" : "good"}`} />
-        {entry}
+      <span className={`file-status status-${status}`}>
+        <Icon name={statusIcon} size={14} />
+        <span className="file-name">{entry}</span>
         {layerCount > 1 && <span className="layer-count"> +{layerCount - 1}層</span>}
+        <span className="status-label">{statusLabel}</span>
       </span>
 
       <Dropdown icon="archive" label="例を開く" closeOnSelect>
         {EXAMPLES.map((ex) => (
-          <button key={ex.key} className="dd-item" onClick={() => setFiles(ex.files, ex.entry)}>
+          <Button
+            key={ex.key}
+            variant="ghost"
+            size="sm"
+            fullWidth
+            style={MENU_ITEM_STYLE}
+            onClick={() => setFiles(ex.files, ex.entry)}
+          >
             {ex.label}
-          </button>
+          </Button>
         ))}
       </Dropdown>
-      <RoundIcon icon="upload" label="ファイルを開く" onClick={() => fileInput.current?.click()} />
+      <ToolIcon icon="upload" label="ファイルを開く" onClick={() => fileInput.current?.click()} />
+      {/* ds:allow-next-line DS Inputはref/accept/hiddenを公開しないため、OSファイル選択用の非表示要素だけ例外 */}
       <input
         ref={fileInput}
         type="file"
@@ -61,16 +83,33 @@ export function Toolbar() {
       />
 
       <div className="export-menu">
-        <RoundIcon icon="download" label="書き出し" selected={menuOpen} onClick={() => setMenuOpen((v) => !v)} />
+        <ToolIcon icon="download" label="書き出し" selected={menuOpen} onClick={() => setMenuOpen((v) => !v)} />
         {menuOpen && (
           <div className="menu panel" onClick={() => setMenuOpen(false)}>
-            <button onClick={() => downloadText(activeFile, source)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              style={MENU_ITEM_STYLE}
+              onClick={() => downloadText(activeFile, source)}
+            >
               ソース ({layerCount > 1 ? activeFile : ".muro"})
-            </button>
-            <button onClick={() => model && downloadText(`${base}.canonical.json`, toCanonical(model), "application/json")} disabled={!model}>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              style={MENU_ITEM_STYLE}
+              onClick={() => model && downloadText(`${base}.canonical.json`, toCanonical(model), "application/json")}
+              disabled={!model}
+            >
               正準JSON
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              fullWidth
+              style={MENU_ITEM_STYLE}
               onClick={() => {
                 if (!model || !planLevel) return;
                 downloadText(`${base}-${planLevel}.svg`, svgPlan(model, { level: planLevel }), "image/svg+xml");
@@ -78,25 +117,28 @@ export function Toolbar() {
               disabled={!model || !planLevel}
             >
               平面SVG ({planLevel ?? "–"})
-            </button>
+            </Button>
             {import.meta.env.PROD && (
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
+                fullWidth
+                style={MENU_ITEM_STYLE}
                 onClick={() => {
                   if (!exportEmbeddedHtml(files, entry)) {
                     alert("配布用HTMLの生成に失敗しました");
                   }
                 }}
-                title="このモデルを埋め込んだ単一HTMLビューワーを書き出す"
               >
                 配布用HTML (モデル埋め込み)
-              </button>
+              </Button>
             )}
           </div>
         )}
       </div>
 
       <div className="toolbar-right">
-        <RoundIcon
+        <ToolIcon
           icon={theme === "dark" ? "sun" : "moon"}
           label={theme === "dark" ? "ライトテーマへ" : "ダークテーマへ"}
           onClick={toggleTheme}

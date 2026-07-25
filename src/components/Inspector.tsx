@@ -7,6 +7,7 @@ import {
   isSemiOutdoor,
   siteReport,
 } from "@kensnzk/koyu";
+import { Icon } from "../lib/ds.js";
 import { useViewer } from "../state/store.js";
 
 export function Inspector() {
@@ -45,8 +46,16 @@ export function Inspector() {
             <tr>
               <td>check</td>
               <td>
-                {checkErrors.length === 0 ? "✔ 整合" : `✖ ${checkErrors.length}`}
-                {checkWarnings.length > 0 ? ` ・ ⚠ ${checkWarnings.length}` : ""}
+                <span className={checkErrors.length > 0 ? "status-inline status-error" : "status-inline status-ready"}>
+                  <Icon name={checkErrors.length > 0 ? "cross-circled" : "check-circled"} size={14} />
+                  {checkErrors.length === 0 ? "整合" : `エラー ${checkErrors.length}`}
+                </span>
+                {checkWarnings.length > 0 && (
+                  <span className="status-inline status-warning">
+                    <Icon name="exclamation-triangle" size={14} />
+                    警告 {checkWarnings.length}
+                  </span>
+                )}
               </td>
             </tr>
           </tbody>

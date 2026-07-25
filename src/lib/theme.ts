@@ -5,7 +5,7 @@
 
 const cache = new Map<string, string>();
 
-/** トークンの計算済み値 (例: token("--primary") → "#3A5590") */
+/** トークンの計算済み値 (例: token("--ink") → テーマに応じた墨色) */
 export function token(name: string): string {
   const hit = cache.get(name);
   if (hit) return hit;
@@ -15,7 +15,7 @@ export function token(name: string): string {
   }
   if (!v) {
     // stylesheet未適用 (テスト等)。キャッシュせず灰色で流す — 適用後の読取は正しい値になる
-    return "#808080";
+    return "#808080"; // ds:allow stylesheet未適用時だけ使う中立フォールバック
   }
   cache.set(name, v);
   return v;
@@ -24,7 +24,7 @@ export function token(name: string): string {
 /** Three.js 用 — トークンを 0xRRGGBB の数値へ */
 export function tokenColor(name: string): number {
   const v = token(name);
-  return v.startsWith("#") ? parseInt(v.slice(1, 7), 16) : 0x808080;
+  return v.startsWith("#") ? parseInt(v.slice(1, 7), 16) : 0x808080; // ds:allow 上と同じ描画フォールバック
 }
 
 /** テーマ切替 (dark等) 時に呼ぶ — 以後の読取が新しい値になる */

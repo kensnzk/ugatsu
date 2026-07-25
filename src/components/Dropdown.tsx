@@ -1,6 +1,7 @@
-// アイコンのみの◯トリガで開く最小のドロップダウン (DSにMenuプリミティブが無いためトークン準拠の自前)
+// アイコントリガで開く最小のドロップダウン
+// (DSにMenuプリミティブが無いためトークン準拠の自前)。
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { RoundIcon } from "./ui.js";
+import { ToolIcon } from "./ui.js";
 
 export function Dropdown({
   icon,
@@ -26,7 +27,7 @@ export function Dropdown({
   }, [open]);
   return (
     <div className="dropdown" ref={ref}>
-      <RoundIcon icon={icon} label={label} variant="outline" selected={open} onClick={() => setOpen((v) => !v)} />
+      <ToolIcon icon={icon} label={label} variant="outline" selected={open} onClick={() => setOpen((v) => !v)} />
       {open && (
         <div className="dropdown-pop" onClick={closeOnSelect ? () => setOpen(false) : undefined}>
           {children}

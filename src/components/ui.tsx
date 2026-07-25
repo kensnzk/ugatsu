@@ -1,7 +1,8 @@
-// ◯の中にアイコンだけの最小ボタン — トップナビ・パネル開閉・キャンバス隅のトリガ用
+// トップナビ・パネル開閉・キャンバス隅で使う最小のアイコンボタン。
+// edge と選択表現は DS 側へ委ねる。
 import { IconButton } from "../lib/ds.js";
 
-export function RoundIcon({
+export function ToolIcon({
   icon,
   label,
   variant = "ghost",
@@ -25,7 +26,6 @@ export function RoundIcon({
       selected={selected}
       disabled={disabled}
       onClick={onClick}
-      style={{ borderRadius: "var(--radius-full)" }}
     />
   );
 }

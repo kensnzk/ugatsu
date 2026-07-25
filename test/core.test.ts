@@ -15,6 +15,7 @@ import {
 } from "@kensnzk/koyu";
 import { buildColors } from "../src/lib/colors.js";
 import { computeStats, statsToCsv } from "../src/lib/stats.js";
+import { useViewer } from "../src/state/store.js";
 import { buildScene } from "../src/three/buildScene.js";
 
 const load = (name: string) => parse(readFileSync(`examples/${name}`, "utf8"));
@@ -208,6 +209,13 @@ describe("面積表 (MUN-144)", () => {
 });
 
 describe("シーン生成", () => {
+  it("Cartesian grid は既定で非表示にし、検査時だけ明示的に有効化する", () => {
+    expect(useViewer.getState().showGrid).toBe(false);
+    useViewer.getState().setShowGrid(true);
+    expect(useViewer.getState().showGrid).toBe(true);
+    useViewer.getState().setShowGrid(false);
+  });
+
   it("3D: 領域を持つ空間がすべてピック対象になり、壁メッシュが生まれる", () => {
     const m = load("office.muro");
     const colors = buildColors(m, "use");

@@ -19,7 +19,7 @@ import { token } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
-import { RoundIcon } from "./ui.js";
+import { ToolIcon } from "./ui.js";
 
 const M = 1680; // 余白 mm
 const WALL_DEFAULT_T = 100;
@@ -42,18 +42,21 @@ export function PlanView() {
   const selected = useViewer((s) => s.selected);
   const hovered = useViewer((s) => s.hovered);
   const route = useViewer((s) => s.route);
+  const showGrid = useViewer((s) => s.showGrid);
   const select = useViewer((s) => s.select);
   const hover = useViewer((s) => s.hover);
   const setPlanLevel = useViewer((s) => s.setPlanLevel);
+  const setShowGrid = useViewer((s) => s.setShowGrid);
   const theme = useViewer((s) => s.theme);
 
-  // 作図色は反転するセマンティックトークンから毎レンダー導出 (light/darkに追従)
-  const INK = token("--text-1"); // 墨 (壁・建具・主ラベル)
-  const PAPER = token("--bg-canvas"); // 図面の地 = 机 (開口の消し込みも同色)
-  const GRID = token("--text-disabled"); // 通り芯
-  const FAINT = token("--border-strong"); // 吹抜け・開放・分節の淡い線
-  const SUBTLE = token("--text-3"); // 敷地境界・注記
-  const BAND = token("--text-2"); // seg帯と表記
+  // structure=line / state=wash / space=blank を作図セマンティックから毎回導出する。
+  const DRAWING = token("--drawing-line"); // 壁・建具
+  const PAPER = token("--bg-canvas"); // 図面の地 (開口の消し込みも同色)
+  const GRID = token("--drawing-line-muted"); // 任意表示の通り芯
+  const FAINT = token("--drawing-line-muted"); // 吹抜け・開放・分節
+  const LABEL = token("--ink"); // 主ラベル
+  const SUBTLE = token("--ink-3"); // 敷地境界・注記
+  const DERIVED = token("--drawing-derived"); // seg帯と導出表記
 
   const svgRef = useRef<SVGSVGElement>(null);
   const [vb, setVb] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
@@ -135,9 +138,9 @@ export function PlanView() {
     const isVoid = s.type === "void";
     // 半屋外 (外部にopen/air境界で接する — 導出) は淡く、屋外であることが図から読めるように
     const semi = !isVoid && isSemiOutdoor(model, s);
-    const fill = isVoid ? PAPER : colors.colorOf(s);
     const isSel = s.path === selected;
     const isRoute = onRoute.has(s.path);
+    const fill = isSel ? token("--selection-bg") : isVoid ? PAPER : colors.colorOf(s);
     for (const [i, r] of s.rects.entries()) {
       roomFills.push(
         <rect
@@ -147,7 +150,7 @@ export function PlanView() {
           width={r.x2 - r.x1}
           height={r.y2 - r.y1}
           fill={fill}
-          fillOpacity={isVoid ? 1 : s.path === hovered ? (semi ? 0.4 : 0.62) : semi ? 0.18 : 0.42}
+          fillOpacity={isSel ? 1 : isVoid ? 1 : s.path === hovered ? (semi ? 0.4 : 0.62) : semi ? 0.18 : 0.42}
           style={{ cursor: "pointer" }}
           onPointerUp={() => {
             if (wasClick()) select(s.path === selected ? null : s.path);
@@ -193,7 +196,7 @@ export function PlanView() {
     const small = (r.x2 - r.x1) * (r.y2 - r.y1) < 6e6; // 6㎡未満は控えめに
     roomLabels.push(
       <g key={s.path} pointerEvents="none" textAnchor="middle">
-        <text x={cx} y={cy - 80} fontSize={280} fill={INK}>
+        <text x={cx} y={cy - 80} fontSize={280} fill={LABEL}>
           {displayName(s)}
         </text>
         {!small && (
@@ -225,7 +228,7 @@ export function PlanView() {
             y={sy(r.y2)}
             width={r.x2 - r.x1}
             height={r.y2 - r.y1}
-            fill={token("--bg-active")}
+            fill={token("--wash-2")}
             fillOpacity={0.55}
             stroke={FAINT}
             strokeWidth={16}
@@ -322,7 +325,7 @@ export function PlanView() {
             y1={sy(seg.y1)}
             x2={sx(seg.x2)}
             y2={sy(seg.y2)}
-            stroke={INK}
+            stroke={DRAWING}
             strokeWidth={28}
           />,
         );
@@ -342,14 +345,14 @@ export function PlanView() {
     const t = b.t ?? WALL_DEFAULT_T;
     for (const [i, seg] of segmentsFor(model, b).entries()) {
       wallMarks.push(
-        <rect key={`w${b.line}#${i}`} {...wallRect(seg, t, sx, sy)} fill={INK} />,
+        <rect key={`w${b.line}#${i}`} {...wallRect(seg, t, sx, sy)} fill={DRAWING} />,
       );
     }
     for (const [i, g] of b.segs.entries()) {
       const placed = placeBand(model, b, g, "seg");
       if ("error" in placed) continue;
       wallMarks.push(
-        <rect key={`s${b.line}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill={BAND} />,
+        <rect key={`s${b.line}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill={DERIVED} />,
       );
       const spec = g.attrs["spec"];
       if (typeof spec === "string") {
@@ -361,7 +364,7 @@ export function PlanView() {
             y={sy(placed.cy) + (h ? -140 : 60)}
             textAnchor={h ? "middle" : "start"}
             fontSize={160}
-            fill={BAND}
+            fill={DERIVED}
           >
             {spec}
           </text>,
@@ -384,9 +387,9 @@ export function PlanView() {
       const half = o.w / 2;
       openingMarks.push(
         seg.horizontal ? (
-          <line key={`win${i}`} x1={sx(cx - half)} y1={sy(cy)} x2={sx(cx + half)} y2={sy(cy)} stroke={INK} strokeWidth={20} />
+          <line key={`win${i}`} x1={sx(cx - half)} y1={sy(cy)} x2={sx(cx + half)} y2={sy(cy)} stroke={DRAWING} strokeWidth={20} />
         ) : (
-          <line key={`win${i}`} x1={sx(cx)} y1={sy(cy - half)} x2={sx(cx)} y2={sy(cy + half)} stroke={INK} strokeWidth={20} />
+          <line key={`win${i}`} x1={sx(cx)} y1={sy(cy - half)} x2={sx(cx)} y2={sy(cy + half)} stroke={DRAWING} strokeWidth={20} />
         ),
       );
     }
@@ -408,7 +411,13 @@ export function PlanView() {
           ))}
         </Dropdown>
         <span className="plan-level-now">{planLevel}</span>
-        {vb && <RoundIcon icon="frame" label="全体" variant="outline" onClick={() => setVb(null)} />}
+        <ToolIcon
+          icon="grid"
+          label={showGrid ? "通り芯を隠す" : "通り芯を表示"}
+          selected={showGrid}
+          onClick={() => setShowGrid(!showGrid)}
+        />
+        {vb && <ToolIcon icon="frame" label="全体" variant="outline" onClick={() => setVb(null)} />}
       </div>
       <svg
         ref={svgRef}
@@ -448,13 +457,13 @@ export function PlanView() {
         {roomFills}
         {areaMarks}
         {siteMarks}
-        {gridMarks}
+        {showGrid && gridMarks}
         <g pointerEvents="none">{wallMarks}</g>
         <g pointerEvents="none">{openingMarks}</g>
         <g pointerEvents="none">{selectionMarks}</g>
         {roomLabels}
         <g pointerEvents="none">
-          <text x={M - 1240} y={extent.H - 360} fontSize={240} fill={INK}>
+          <text x={M - 1240} y={extent.H - 360} fontSize={240} fill={LABEL}>
             {`${model.name ?? "無題"} — ${planLevel} 平面`}
           </text>
           <text x={extent.W - M + 1240} y={extent.H - 360} textAnchor="end" fontSize={180} fill={GRID}>
@@ -505,7 +514,7 @@ function doorSwing(
   sx: (x: number) => number,
   sy: (y: number) => number,
 ): ReactNode {
-  const INK = token("--text-1"); // 呼出時に読む (テーマ追従)
+  const DRAWING = token("--drawing-line"); // 呼出時に読む (テーマ追従)
   // 開く側の空間: swing:a/b の指定、既定はa側 (領域を持つ方)。合併なら扉に最も近い矩形へ開く
   const sa = model.spaces.get(b.a);
   const sb = model.spaces.get(b.b);
@@ -546,8 +555,8 @@ function doorSwing(
     const s2 = { x: hinge.x + inward.x * off, y: hinge.y + inward.y * off };
     return (
       <>
-        <line x1={sx(s1.x)} y1={sy(s1.y)} x2={sx(s2.x)} y2={sy(s2.y)} stroke={INK} strokeWidth={40} />
-        <line x1={sx(s2.x)} y1={sy(s2.y)} x2={sx(hinge.x)} y2={sy(hinge.y)} stroke={INK} strokeWidth={14} />
+        <line x1={sx(s1.x)} y1={sy(s1.y)} x2={sx(s2.x)} y2={sy(s2.y)} stroke={DRAWING} strokeWidth={40} />
+        <line x1={sx(s2.x)} y1={sy(s2.y)} x2={sx(hinge.x)} y2={sy(hinge.y)} stroke={DRAWING} strokeWidth={14} />
       </>
     );
   }
@@ -561,11 +570,11 @@ function doorSwing(
   const sweep = crossZ > 0 ? 1 : 0;
   return (
     <>
-      <line x1={ph.x} y1={ph.y} x2={p1.x} y2={p1.y} stroke={INK} strokeWidth={28} />
+      <line x1={ph.x} y1={ph.y} x2={p1.x} y2={p1.y} stroke={DRAWING} strokeWidth={28} />
       <path
         d={`M ${p1.x} ${p1.y} A ${o.w} ${o.w} 0 0 ${sweep} ${p2.x} ${p2.y}`}
         fill="none"
-        stroke={INK}
+        stroke={DRAWING}
         strokeWidth={14}
         strokeDasharray="60 50"
       />

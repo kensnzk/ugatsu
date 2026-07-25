@@ -8,34 +8,34 @@ export type ColorMode = "use" | "type" | "level";
 /* 空間の色分け (用途/型/レベル) はカテゴリカルなデータ配色で、DSのUIトークンには無い語彙。
    図面と調和する落ち着いた中間トーンとしてここだけ固有パレットを持つ (ds-check除外)。 */
 const PALETTE = [
-  "#6d8ca0", // 青灰
-  "#b08968", // 黄土
-  "#6ba292", // 青緑
-  "#a26769", // 弁柄
-  "#8d7ba5", // 藤
-  "#a3a380", // 利休
-  "#c2a878", // 芥子
-  "#7d99b8", // 縹
-  "#9a8c78", // 胡桃
-  "#78909c", // 鈍色
-  "#b39c8f", // 桜鼠
-  "#86a67c", // 苔
+  "#6d8ca0", // 青灰 — ds:allow 分析カテゴリ専用。製品クロームとは分離
+  "#b08968", // 黄土 — ds:allow 分析カテゴリ専用
+  "#6ba292", // 青緑 — ds:allow 分析カテゴリ専用
+  "#a26769", // 弁柄 — ds:allow 分析カテゴリ専用
+  "#8d7ba5", // 藤 — ds:allow 分析カテゴリ専用
+  "#a3a380", // 利休 — ds:allow 分析カテゴリ専用
+  "#c2a878", // 芥子 — ds:allow 分析カテゴリ専用
+  "#7d99b8", // 縹 — ds:allow 分析カテゴリ専用
+  "#9a8c78", // 胡桃 — ds:allow 分析カテゴリ専用
+  "#78909c", // 鈍色 — ds:allow 分析カテゴリ専用
+  "#b39c8f", // 桜鼠 — ds:allow 分析カテゴリ専用
+  "#86a67c", // 苔 — ds:allow 分析カテゴリ専用
 ];
 
 /** 既知の語への固定色 (use) */
 const USE_FIXED: Record<string, string> = {
-  rentable: "#6ba292",
-  exclusive: "#b08968",
-  common: "#6d8ca0",
+  rentable: "#6ba292", // ds:allow 上の分析カテゴリパレットと同じ固定割当
+  exclusive: "#b08968", // ds:allow 上の分析カテゴリパレットと同じ固定割当
+  common: "#6d8ca0", // ds:allow 上の分析カテゴリパレットと同じ固定割当
 };
 
 // テーマ (light/dark) 追従のため、値の捕捉ではなく呼出時にトークンを読む
-export const unsetColor = () => token("--gray-300");
-export const voidColor = () => token("--gray-200");
-/** 選択 = 藍 (DS: selection is indigo) */
-export const selectColor = () => token("--primary");
-/** 経路 = 朱 (DS: vermilion = markup, the one thing demanding attention) */
-export const routeColor = () => token("--accent");
+export const unsetColor = () => token("--wash-2");
+export const voidColor = () => token("--wash-1");
+/** 選択の関係線 = mineral。選択面は各ビュー側で --selection-bg を重ねる。 */
+export const selectColor = () => token("--selection-line");
+/** 経路は分析結果なので cinnabar ではなく drawing の導出線を使う。 */
+export const routeColor = () => token("--drawing-derived");
 
 export class ColorAssigner {
   private map = new Map<string, string>();

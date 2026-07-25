@@ -7,12 +7,12 @@ import { Inspector } from "./Inspector.js";
 import { PlanView } from "./PlanView.js";
 import { Scene3D } from "./Scene3D.js";
 import { Toolbar } from "./Toolbar.js";
-import { RoundIcon } from "./ui.js";
+import { ToolIcon } from "./ui.js";
 
-const VIEW_ITEMS: Array<{ value: MainView; label: string }> = [
-  { value: "plan", label: "平面" },
-  { value: "3d", label: "3D" },
-  { value: "table", label: "面積表" },
+const VIEW_ITEMS: Array<{ value: MainView; label: string; icon: string }> = [
+  { value: "plan", label: "平面", icon: "grid" },
+  { value: "3d", label: "3D", icon: "cube" },
+  { value: "table", label: "面積表", icon: "table" },
 ];
 
 export function App() {
@@ -115,12 +115,12 @@ export function App() {
           <div className="side side-left">
             <EditorPane />
             <div className="side-close">
-              <RoundIcon icon="pin-left" label="エディタを閉じる" onClick={toggleEditor} />
+              <ToolIcon icon="pin-left" label="エディタを閉じる" onClick={toggleEditor} />
             </div>
           </div>
         ) : (
           <div className="side-reopen side-reopen-left">
-            <RoundIcon icon="pin-right" label="エディタを開く" variant="outline" onClick={toggleEditor} />
+            <ToolIcon icon="pin-right" label="エディタを開く" variant="outline" onClick={toggleEditor} />
           </div>
         )}
         {showInspector ? (
@@ -128,12 +128,12 @@ export function App() {
             <div className="side-resize" onPointerDown={startInspectorResize} />
             <Inspector />
             <div className="side-close">
-              <RoundIcon icon="pin-right" label="プロパティを閉じる" onClick={toggleInspector} />
+              <ToolIcon icon="pin-right" label="プロパティを閉じる" onClick={toggleInspector} />
             </div>
           </div>
         ) : (
           <div className="side-reopen side-reopen-right">
-            <RoundIcon icon="pin-left" label="プロパティを開く" variant="outline" onClick={toggleInspector} />
+            <ToolIcon icon="pin-left" label="プロパティを開く" variant="outline" onClick={toggleInspector} />
           </div>
         )}
       </div>
