@@ -2,6 +2,8 @@
 
 *[English README](README.md)*
 
+**[デモを開く → ugatsu.dev](https://ugatsu.dev)** — インストール不要。デモは配布物そのもの (書き出せる単一HTMLと同じ一枚) です。
+
 空間一次・テキストネイティブの建築記法 [koyu](https://github.com/kensnzk/koyu) の 2D/3D ビューワー。ソースに形は無い — 平面図・レベルの重ね (2.5D)・立体・面積表は、編集のたびにテキストからその場で生成される。
 
 名は「鑿つ/穿つ」。koyu (戸牖 — 老子第十一章、戸と牖を鑿って室と為す) に対して、テキストに開口を穿って中を覗く行為の名。
@@ -30,7 +32,7 @@ npm run embed -- examples/mansion.muro   # モデル埋め込みの配布用HTML
 npm run sync-examples  # インストール済み koyu から同梱例を更新
 ```
 
-ビルド産物は常に単一HTML。`dist/index.html` をそのまま送れば誰でもブラウザで開ける。
+ビルド産物は常に単一HTML。`dist/index.html` をそのまま送れば誰でもブラウザで開ける。[ugatsu.dev](https://ugatsu.dev) が配信しているのもこの一枚 — Vercelの静的配信で、デプロイの実体は `vercel.json` だけ ([ADR-0004](docs/decisions/0004-demo-site.md))。
 
 ## 構成
 

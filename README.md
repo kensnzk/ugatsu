@@ -2,6 +2,8 @@
 
 *[日本語版 README](README.ja.md)*
 
+**[Open the demo → ugatsu.dev](https://ugatsu.dev)** — nothing to install. The demo *is* the release artefact: the same single HTML file you can download and send to anyone.
+
 A 2D/3D viewer for [koyu](https://github.com/kensnzk/koyu) — the space-first, text-native architectural notation. The source text has no geometry in it; plans, stacked levels, 3D volumes and area schedules are all generated from the text, live, as you edit.
 
 The name 鑿つ/穿つ (*ugatsu*, "to bore through") follows koyu (戸牖, "door and window" — Laozi ch. 11): openings are what make rooms usable, and a viewer is the act of opening a way into the text.
@@ -30,7 +32,7 @@ npm run embed -- examples/mansion.muro   # emit a distributable HTML with the mo
 npm run sync-examples  # refresh bundled examples from the installed koyu
 ```
 
-The build artefact is always a single HTML file. Send `dist/index.html` to anyone and it opens in a browser.
+The build artefact is always a single HTML file. Send `dist/index.html` to anyone and it opens in a browser. [ugatsu.dev](https://ugatsu.dev) serves that very file — Vercel, static, `vercel.json` is the whole deployment ([ADR-0004](docs/decisions/0004-demo-site.md)).
 
 ## Structure
 

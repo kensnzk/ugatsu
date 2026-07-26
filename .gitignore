@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.vercel/
 *.ugatsu.html
 .DS_Store
 *.log

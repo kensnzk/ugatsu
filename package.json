@@ -51,7 +51,7 @@
     "type": "git",
     "url": "git+https://github.com/kensnzk/ugatsu.git"
   },
-  "homepage": "https://github.com/kensnzk/ugatsu#readme",
+  "homepage": "https://ugatsu.dev",
   "allowScripts": {
     "esbuild": true
   }
