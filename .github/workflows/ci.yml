@@ -10,8 +10,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      # package-lock.json をコミットしたら npm ci + setup-node の cache:npm に戻す
-      - run: npm install
+          cache: npm
+      # 依存はすべてnpmレジストリから来る (git依存ゼロ) ので lockfile を信じてよい
+      - run: npm ci
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
