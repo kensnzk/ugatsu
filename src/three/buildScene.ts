@@ -16,7 +16,6 @@ import {
   type Boundary,
   type Model,
   type Pt,
-  type Rect,
   type RunSolid,
   type Slab,
   type Space,
@@ -152,16 +151,8 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     if (stackMode) {
       if (isVoid) continue; // 床の不在 — プレートを置かないことが吹抜けの表現
       const mat = new THREE.MeshLambertMaterial({ color });
-      for (const r of s.rects) {
-        const m = boxMesh(
-          r.x2 - r.x1,
-          PLATE_T,
-          r.y2 - r.y1,
-          tx((r.x1 + r.x2) / 2),
-          ty(z0) + PLATE_T / 2,
-          tz((r.y1 + r.y2) / 2),
-          mat,
-        );
+      for (const poly of piecesOf(s)) {
+        const m = prismMesh(poly, z0, z0 + PLATE_T, mat);
         m.userData.path = s.path;
         group.add(m, edgeLines(m, EDGE(), 0.35));
         pickables.push(m);
@@ -174,16 +165,8 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     const h = semi ? 150 : spaceHeight(model, s);
     if (isVoid) {
       // 吹抜け: 実体を持たない気積 — 輪郭線だけの幽霊
-      for (const r of s.rects) {
-        const m = boxMesh(
-          r.x2 - r.x1,
-          h,
-          r.y2 - r.y1,
-          tx((r.x1 + r.x2) / 2),
-          ty(z0) + h / 2,
-          tz((r.y1 + r.y2) / 2),
-          new THREE.MeshBasicMaterial({ visible: false }),
-        );
+      for (const poly of piecesOf(s)) {
+        const m = prismMesh(poly, z0, z0 + h, new THREE.MeshBasicMaterial({ visible: false }));
         m.userData.path = s.path;
         group.add(m, edgeLines(m, GHOST(), 0.55));
         pickables.push(m);
@@ -193,16 +176,8 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     const mat = semi
       ? new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
       : new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false });
-    for (const r of s.rects) {
-      const m = boxMesh(
-        r.x2 - r.x1,
-        h,
-        r.y2 - r.y1,
-        tx((r.x1 + r.x2) / 2),
-        ty(z0) + h / 2,
-        tz((r.y1 + r.y2) / 2),
-        mat,
-      );
+    for (const poly of piecesOf(s)) {
+      const m = prismMesh(poly, z0, z0 + h, mat);
       m.userData.path = s.path;
       group.add(m, edgeLines(m, EDGE(), 0.45));
       pickables.push(m);
@@ -371,19 +346,28 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
   return { group, pickables };
 }
 
-/** 面 (床・天井・屋根) を厚みのある版へ押し出す */
-function slabMesh(sl: Slab, mat: THREE.Material): THREE.Mesh {
-  // 世界の (x, y) をそのまま平面に取り、押し出し軸 (+Z) を rotateX(-90°) で上へ向ける。
-  // この回転は (u, v, d) → (u, d, -v) なので、v=y がそのまま three の -z になる
-  const shape = new THREE.Shape(sl.outline.map((p) => new THREE.Vector2(p.x, p.y)));
-  const g = new THREE.ExtrudeGeometry(shape, {
-    depth: Math.max(1, sl.z1 - sl.z0),
-    bevelEnabled: false,
-  });
+/** 導出された領域 (凸片)。描かれた線 (koyu ADR-0022) で切られていれば斜めになる */
+function piecesOf(s: Space): Pt[][] {
+  return s.pieces.length > 0 ? s.pieces : s.rects.map(rectToPoly);
+}
+
+/**
+ * 平面の輪郭を z0..z1 へ押し出す。
+ * ExtrudeGeometry は XY 平面に作って +Z へ伸ばすので、rotateX(-90°) で
+ * (u, v, d) → (u, d, -v) となり、v=世界のy がそのまま three の -z になる
+ */
+function prismMesh(outline: Pt[], z0: number, z1: number, mat: THREE.Material): THREE.Mesh {
+  const shape = new THREE.Shape(outline.map((p) => new THREE.Vector2(p.x, p.y)));
+  const g = new THREE.ExtrudeGeometry(shape, { depth: Math.max(1, z1 - z0), bevelEnabled: false });
   g.rotateX(-Math.PI / 2);
   const m = new THREE.Mesh(g, mat);
-  m.position.y = ty(sl.z0);
+  m.position.y = ty(z0);
   return m;
+}
+
+/** 面 (床・天井・屋根) を厚みのある版へ押し出す */
+function slabMesh(sl: Slab, mat: THREE.Material): THREE.Mesh {
+  return prismMesh(sl.outline, sl.z0, sl.z1, mat);
 }
 
 /** koyu が返した素の立体を three の網へ。判断は一切持たず、形を写すだけである */
