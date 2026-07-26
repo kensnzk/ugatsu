@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   areaM2,
   check,
+  DEFAULT_LANGUAGE_VERSION,
   doorsBetween,
   parse,
   parseFiles,
@@ -73,7 +74,8 @@ describe("koyuパッケージ", () => {
   it("正準JSONと平面SVGがそのまま出せる", () => {
     const m = load("office.muro");
     const json = JSON.parse(toCanonical(m));
-    expect(json.koyu).toBe("0.1");
+    // 言語版は直書きしない — koyu の台帳 (ADR-0017) を参照し、版が上がれば追随する
+    expect(json.koyu).toBe(DEFAULT_LANGUAGE_VERSION);
     expect(Object.keys(json.spaces).length).toBe(m.spaces.size);
     expect(svgPlan(m, { level: "L1" })).toContain("</svg>");
   });

@@ -11,7 +11,7 @@ import { useViewer } from "../state/store.js";
 
 const External = Annotation.define<boolean>();
 
-const KEYWORDS = /^(koyu|name|unit|grid|level|space|boundary|zone|stack|import|asset)\b/;
+const KEYWORDS = /^(koyu|name|unit|grid|level|space|boundary|zone|stack|import|asset|band|polygon)\b/;
 const SUBS = /^(door|window|seg|area)\b/;
 
 /** koyu (.muro) の簡易ハイライト */
