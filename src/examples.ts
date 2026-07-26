@@ -36,7 +36,7 @@ const single = (key: string, label: string, fileName: string, source: string): E
 });
 
 export const EXAMPLES: Example[] = [
-  single("two-rooms", "二室一扉 — 最初の一手", "two-rooms.muro", twoRooms),
+  single("two-rooms", "二室 — 最小の例", "two-rooms.muro", twoRooms),
   single("office", "小さなオフィス — 2フロア+吹抜け", "office.muro", office),
   single("house", "小さな戸建住宅 — メゾネット+敷地", "house.muro", house),
   {
