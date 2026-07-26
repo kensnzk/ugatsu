@@ -82,11 +82,17 @@ function build(dir) {
   execFileSync("npx", ["tsc", "-p", "tsconfig.build.json"], { cwd: dir, stdio: "inherit" });
 }
 
+/** Vite の依存キャッシュを捨てる — リンク先の変更が画面に伝わらない事故を防ぐ */
+function bustViteCache() {
+  rmSync(join(root, "node_modules", ".vite"), { recursive: true, force: true });
+}
+
 function link(target, meta) {
   mkdirSync(dirname(LINK), { recursive: true });
   rmSync(LINK, { recursive: true, force: true });
   symlinkSync(target, LINK, "dir");
   writeFileSync(STATE, JSON.stringify({ ...meta, path: target }, null, 2) + "\n");
+  bustViteCache();
 }
 
 // 第1引数が --status / --unlink ならコマンド、そうでなければ ref (省略時は作業ツリー)
@@ -113,4 +119,5 @@ if (cmd === "--status") {
   link(t.dir, { ref: t.ref, commit: t.commit });
   status();
   console.log("\nnpm run dev / typecheck / test はこのツリーを見ます。戻すときは npm run koyu:unlink");
+  console.log("koyu を直したら npm run koyu:local を叩き直す (dist を作り直しキャッシュを捨てる)");
 }
