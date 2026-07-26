@@ -319,6 +319,25 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       const t = isAir ? Math.min(b.t ?? 60, 80) : (b.t ?? 100);
       const mat = isAir ? railMat : wallMat;
       for (const seg of segmentsFor(model, b)) {
+        if (seg.diagonal) {
+          // 描かれた線 (koyu ADR-0022) は斜めになりうる。芯線に沿った箱をY軸まわりに回す。
+          // three は (x, z, -y) なので、+X を (dx, 0, -dy) へ向ける角は atan2(dy, dx)
+          const dx = seg.x2 - seg.x1;
+          const dy = seg.y2 - seg.y1;
+          const len = Math.hypot(dx, dy);
+          const m = boxMesh(
+            len,
+            h,
+            t,
+            tx((seg.x1 + seg.x2) / 2),
+            ty(z0) + h / 2,
+            tz((seg.y1 + seg.y2) / 2),
+            mat,
+          );
+          m.rotation.y = Math.atan2(dy, dx);
+          group.add(m);
+          continue;
+        }
         const m = seg.horizontal
           ? boxMesh(seg.x2 - seg.x1, h, t, tx((seg.x1 + seg.x2) / 2), ty(z0) + h / 2, tz(seg.y1), mat)
           : boxMesh(t, h, seg.y2 - seg.y1, tx(seg.x1), ty(z0) + h / 2, tz((seg.y1 + seg.y2) / 2), mat);
