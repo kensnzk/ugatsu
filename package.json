@@ -11,6 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "sync-examples": "node scripts/sync-examples.mjs",
+    "koyu:local": "node scripts/koyu-local.mjs",
+    "koyu:status": "node scripts/koyu-local.mjs --status",
+    "koyu:unlink": "node scripts/koyu-local.mjs --unlink",
     "embed": "node scripts/embed-model.mjs",
     "ds:check": "node scripts/ds-check.mjs",
     "ds:update": "npm i @kensnzk/koyu-design-system@latest && npm run ds:check"

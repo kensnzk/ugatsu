@@ -30,6 +30,16 @@ npm run typecheck
 npm run build          # dist/index.html — the whole viewer is a single HTML file
 npm run embed -- examples/mansion.muro   # emit a distributable HTML with the model embedded
 npm run sync-examples  # refresh bundled examples from the installed koyu
+
+npm run koyu:local            # point at the sibling koyu working tree
+npm run koyu:local -- aef5b67 # …or at one specific koyu commit (tag/branch too)
+npm run koyu:status           # which koyu am I linked to right now?
+npm run koyu:unlink           # back to the published package
+```
+
+`koyu:local` swaps `node_modules/@kensnzk/koyu` for a symlink, so Vite, `tsc` and Vitest all resolve to the same tree — you can check a koyu change in the plan and the 3D **without publishing it first** ([ADR-0005](docs/decisions/0005-local-koyu-pipeline.md)). CI is untouched: `npm ci` restores the registry version, so a red CI here means the version you are using has not been published yet, which is exactly what it should say.
+
+```sh
 ```
 
 The build artefact is always a single HTML file. Send `dist/index.html` to anyone and it opens in a browser. [ugatsu.dev](https://ugatsu.dev) serves that very file — Vercel, static, `vercel.json` is the whole deployment ([ADR-0004](docs/decisions/0004-demo-site.md)).
