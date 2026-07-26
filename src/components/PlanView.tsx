@@ -3,16 +3,31 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   areaM2,
+  columnsFor,
   displayName,
   isSemiOutdoor,
   placeBand,
   placeOpening,
+  polygonAreaM2,
+  polyBounds,
+  rectToPoly,
+  runDrawsForLevel,
   segmentsFor,
   type Boundary,
   type Model,
   type Opening,
+  type Pt,
   type Segment,
+  type Space,
 } from "@kensnzk/koyu";
+
+/** 導出された領域 (凸片)。描かれた線 (koyu ADR-0022) で切られていれば斜めになる */
+const piecesOf = (s: Space): Pt[][] =>
+  s.pieces.length > 0 ? s.pieces : s.rects.map(rectToPoly);
+const bounds = polyBounds;
+const area = polygonAreaM2;
+const pathOf = (poly: Pt[], sx: (x: number) => number, sy: (y: number) => number): string =>
+  poly.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`).join(" ") + " Z";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Radio } from "../lib/ds.js";
 import { token } from "../lib/theme.js";
@@ -85,7 +100,7 @@ export function PlanView() {
 
   const extent: Extent | null = useMemo(() => {
     if (rooms.length === 0) return null;
-    const rs = rooms.flatMap((s) => s.rects);
+    const rs = rooms.flatMap((s) => piecesOf(s).map(bounds));
     const px = sitePolys.flatMap((p) => p.points.map((pt) => pt.x));
     const py = sitePolys.flatMap((p) => p.points.map((pt) => pt.y));
     const minX = Math.min(...rs.map((r) => r.x1), ...px);
@@ -141,14 +156,12 @@ export function PlanView() {
     const isSel = s.path === selected;
     const isRoute = onRoute.has(s.path);
     const fill = isSel ? token("--selection-bg") : isVoid ? PAPER : colors.colorOf(s);
-    for (const [i, r] of s.rects.entries()) {
+    for (const [i, poly] of piecesOf(s).entries()) {
+      const r = bounds(poly);
       roomFills.push(
-        <rect
+        <path
           key={`${s.path}#${i}`}
-          x={sx(r.x1)}
-          y={sy(r.y2)}
-          width={r.x2 - r.x1}
-          height={r.y2 - r.y1}
+          d={pathOf(poly, sx, sy)}
           fill={fill}
           fillOpacity={isSel ? 1 : isVoid ? 1 : s.path === hovered ? (semi ? 0.4 : 0.62) : semi ? 0.18 : 0.42}
           style={{ cursor: "pointer" }}
@@ -170,14 +183,11 @@ export function PlanView() {
     }
     // 選択・経路の輪郭 (合併の各矩形へ)
     if (isSel || isRoute) {
-      for (const [i, r] of s.rects.entries()) {
+      for (const [i, poly] of piecesOf(s).entries()) {
         selectionMarks.push(
-          <rect
+          <path
             key={`${s.path}#${i}sel`}
-            x={sx(r.x1)}
-            y={sy(r.y2)}
-            width={r.x2 - r.x1}
-            height={r.y2 - r.y1}
+            d={pathOf(poly, sx, sy)}
             fill="none"
             stroke={isSel ? selectColor() : routeColor()}
             strokeWidth={isSel ? 70 : 50}
@@ -187,9 +197,9 @@ export function PlanView() {
       }
     }
     // ラベル (最大矩形の中心)
-    const r = [...s.rects].sort(
-      (a, b) => (b.x2 - b.x1) * (b.y2 - b.y1) - (a.x2 - a.x1) * (a.y2 - a.y1),
-    )[0]!;
+    const r = bounds(
+      [...piecesOf(s)].sort((a, b) => area(b) - area(a))[0]!,
+    );
     const cx = sx((r.x1 + r.x2) / 2);
     const cy = sy((r.y1 + r.y2) / 2);
     const a = areaM2(s);
@@ -395,6 +405,65 @@ export function PlanView() {
     }
   }
 
+  // ---- 柱 (koyu ADR-0023) — 位置は書かれず、通り芯の交点と床の交わりから現れる ----
+  const columnMarks: ReactNode[] = [];
+  for (const [i, c] of columnsFor(model, planLevel).entries()) {
+    columnMarks.push(
+      <rect
+        key={`col${i}`}
+        x={sx(c.x - c.w / 2)}
+        y={sy(c.y + c.d / 2)}
+        width={c.w}
+        height={c.d}
+        fill={DRAWING}
+        pointerEvents="none"
+      />,
+    );
+  }
+
+  // ---- 縦動線 (koyu ADR-0021) — そのレベルで切った姿 ----
+  // 上る走りは切断線で切れ、その先に下りる走りが見える。全ての判断は koyu 側が持つ
+  const runMarks: ReactNode[] = [];
+  for (const [i, d] of runDrawsForLevel(model, planLevel).entries()) {
+    const line = (g: { x1: number; y1: number; x2: number; y2: number }, k: string, w: number) => (
+      <line key={k} x1={sx(g.x1)} y1={sy(g.y1)} x2={sx(g.x2)} y2={sy(g.y2)} strokeWidth={w} />
+    );
+    runMarks.push(
+      <g key={`run${i}`} stroke={DRAWING} pointerEvents="none">
+        {d.outline.map((g, k) => line(g, `o${k}`, 24))}
+        {d.treads.map((g, k) => line(g, `t${k}`, 14))}
+        {d.breaks.map((g, k) => line(g, `b${k}`, 32))}
+        {d.arrows.map((a, k) => {
+          const dx = a.x2 - a.x1;
+          const dy = a.y2 - a.y1;
+          const len = Math.hypot(dx, dy) || 1;
+          const hx = (dx / len) * 420;
+          const hy = (dy / len) * 420;
+          const px = (-dy / len) * 200;
+          const py = (dx / len) * 200;
+          return (
+            <g key={`a${k}`}>
+              <line x1={sx(a.x1)} y1={sy(a.y1)} x2={sx(a.x2)} y2={sy(a.y2)} strokeWidth={20} />
+              <path
+                d={`M ${sx(a.x2)} ${sy(a.y2)} L ${sx(a.x2 - hx + px)} ${sy(a.y2 - hy + py)} L ${sx(a.x2 - hx - px)} ${sy(a.y2 - hy - py)} Z`}
+                fill={DRAWING}
+                stroke="none"
+              />
+              <text x={sx(a.x1) + 90} y={sy(a.y1) + 90} fontSize={220} fill={DRAWING} stroke="none">
+                {a.label}
+              </text>
+            </g>
+          );
+        })}
+        {d.notes.map((n, k) => (
+          <text key={`n${k}`} x={sx(n.x)} y={sy(n.y) + 700} fontSize={200} fill={FAINT} stroke="none" textAnchor="middle">
+            {n.text}
+          </text>
+        ))}
+      </g>,
+    );
+  }
+
   return (
     <div className="plan-view">
       <div className="plan-toolbar">
@@ -458,6 +527,8 @@ export function PlanView() {
         {areaMarks}
         {siteMarks}
         {showGrid && gridMarks}
+        <g pointerEvents="none">{columnMarks}</g>
+        <g pointerEvents="none">{runMarks}</g>
         <g pointerEvents="none">{wallMarks}</g>
         <g pointerEvents="none">{openingMarks}</g>
         <g pointerEvents="none">{selectionMarks}</g>

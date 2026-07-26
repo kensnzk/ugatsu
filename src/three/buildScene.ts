@@ -3,12 +3,22 @@
 // 2.5Dモード: 各レベルの床プレートを重ね、展開係数で持ち上げる (吹抜けは床の不在=穴)。
 import * as THREE from "three";
 import {
+  columnsFor,
   heff,
   isSemiOutdoor,
   placeOpening,
+  polyBounds,
+  rectToPoly,
+  runSolids,
+  slabs,
   segmentsFor,
+  verticalRuns,
   type Boundary,
   type Model,
+  type Pt,
+  type Rect,
+  type RunSolid,
+  type Slab,
   type Space,
 } from "@kensnzk/koyu";
 import type { ModelColors } from "../lib/colors.js";
@@ -20,6 +30,8 @@ export interface SceneOptions {
   spread: number;
   showWalls: boolean;
   showOpenings: boolean;
+  /** 床・天井・屋根を描くか (既定 true) */
+  showFabric?: boolean;
   hiddenLevels: Record<string, true>;
 }
 
@@ -197,6 +209,48 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     }
   }
 
+  // ---- 柱 (koyu ADR-0023) — 通り芯の交点と床の交わりから現れる ----
+  if (!stackMode) {
+    const colMat = new THREE.MeshLambertMaterial({ color: INK() });
+    for (const level of Object.keys(model.levels)) {
+      if (levelHidden(level)) continue;
+      const z = zOf(level);
+      const h = levelPitch(model, level) ?? DEFAULT_H;
+      for (const c of columnsFor(model, level)) {
+        group.add(boxMesh(c.w, h, c.d, tx(c.x), ty(z) + h / 2, tz(c.y), colMat));
+      }
+    }
+  }
+
+  // ---- 縦動線 (koyu ADR-0021) — 段は段として、斜路は傾いた版として立ち上がる ----
+  // 段割りも勾配もここでは決めない。koyu が返した立体を幾何に写すだけである
+  if (!stackMode) {
+    const runMat = new THREE.MeshLambertMaterial({ color: tokenColor("--drawing-derived") });
+    for (const run of verticalRuns(model)) {
+      if (levelHidden(run.level)) continue;
+      for (const solid of runSolids(run)) group.add(solidMesh(solid, runMat));
+    }
+  }
+
+  // ---- 面の要素 (koyu ADR-0024): 床・天井・屋根 ----
+  // どれも語彙を持たない — level の slab と space の h が既に宣言しているものを、
+  // koyu が面として返す。ここは押し出すだけである
+  if (!stackMode && opts.showFabric !== false) {
+    const mats: Record<string, THREE.Material> = {
+      floor: new THREE.MeshLambertMaterial({ color: tokenColor("--wash-2") }),
+      ceiling: new THREE.MeshLambertMaterial({
+        color: tokenColor("--wash-1"),
+        transparent: true,
+        opacity: 0.45,
+      }),
+      roof: new THREE.MeshLambertMaterial({ color: INK() }),
+    };
+    for (const sl of slabs(model)) {
+      if (levelHidden(sl.level)) continue;
+      group.add(slabMesh(sl, mats[sl.kind]!));
+    }
+  }
+
   // ---- 敷地形状 (ADR-0011): 所与の多角形を地盤面として描き、境界線を引く ----
   for (const poly of model.polygons.values()) {
     const shape = new THREE.Shape(poly.points.map((p) => new THREE.Vector2(p.x, p.y)));
@@ -315,6 +369,72 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
   // mm → m
   group.scale.setScalar(0.001);
   return { group, pickables };
+}
+
+/** 面 (床・天井・屋根) を厚みのある版へ押し出す */
+function slabMesh(sl: Slab, mat: THREE.Material): THREE.Mesh {
+  // 世界の (x, y) をそのまま平面に取り、押し出し軸 (+Z) を rotateX(-90°) で上へ向ける。
+  // この回転は (u, v, d) → (u, d, -v) なので、v=y がそのまま three の -z になる
+  const shape = new THREE.Shape(sl.outline.map((p) => new THREE.Vector2(p.x, p.y)));
+  const g = new THREE.ExtrudeGeometry(shape, {
+    depth: Math.max(1, sl.z1 - sl.z0),
+    bevelEnabled: false,
+  });
+  g.rotateX(-Math.PI / 2);
+  const m = new THREE.Mesh(g, mat);
+  m.position.y = ty(sl.z0);
+  return m;
+}
+
+/** koyu が返した素の立体を three の網へ。判断は一切持たず、形を写すだけである */
+function solidMesh(solid: RunSolid, mat: THREE.Material): THREE.Mesh {
+  const r = solid.rect;
+  if (solid.kind === "box") {
+    return boxMesh(
+      r.x2 - r.x1,
+      Math.max(1, solid.z1 - solid.z0),
+      r.y2 - r.y1,
+      tx((r.x1 + r.x2) / 2),
+      ty((solid.z0 + solid.z1) / 2),
+      tz((r.y1 + r.y2) / 2),
+      mat,
+    );
+  }
+  // 傾いた版: up 側へ z0→z1 で上がる。矩形の四隅の高さを線形に決め、厚み t ぶん下へ落とす
+  const zAt = (x: number, y: number): number => {
+    const f =
+      solid.up === "E"
+        ? (x - r.x1) / Math.max(1, r.x2 - r.x1)
+        : solid.up === "W"
+          ? (r.x2 - x) / Math.max(1, r.x2 - r.x1)
+          : solid.up === "N"
+            ? (y - r.y1) / Math.max(1, r.y2 - r.y1)
+            : (r.y2 - y) / Math.max(1, r.y2 - r.y1);
+    return solid.z0 + f * (solid.z1 - solid.z0);
+  };
+  const corners: Array<[number, number]> = [
+    [r.x1, r.y1],
+    [r.x2, r.y1],
+    [r.x2, r.y2],
+    [r.x1, r.y2],
+  ];
+  const top = corners.map(([x, y]) => [tx(x), ty(zAt(x, y)), tz(y)] as const);
+  const bot = corners.map(([x, y]) => [tx(x), ty(zAt(x, y) - solid.t), tz(y)] as const);
+  const v = [...top, ...bot].flat();
+  // 上面 0-1-2-3 / 下面 4-5-6-7 (上から見て同じ並び) の側面を張る
+  const idx = [
+    0, 1, 2, 0, 2, 3, // 上
+    6, 5, 4, 7, 6, 4, // 下
+    0, 4, 5, 0, 5, 1,
+    1, 5, 6, 1, 6, 2,
+    2, 6, 7, 2, 7, 3,
+    3, 7, 4, 3, 4, 0,
+  ];
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return new THREE.Mesh(g, mat);
 }
 
 export function disposeGroup(group: THREE.Object3D): void {
