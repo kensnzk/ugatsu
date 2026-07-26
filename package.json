@@ -11,6 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "sync-examples": "node scripts/sync-examples.mjs",
+    "koyu:local": "node scripts/koyu-local.mjs",
+    "koyu:status": "node scripts/koyu-local.mjs --status",
+    "koyu:unlink": "node scripts/koyu-local.mjs --unlink",
     "embed": "node scripts/embed-model.mjs",
     "ds:check": "node scripts/ds-check.mjs",
     "ds:update": "npm i @kensnzk/koyu-design-system@latest && npm run ds:check"
@@ -19,7 +22,7 @@
     "@codemirror/language": "^6.10.0",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.35.0",
-    "@kensnzk/koyu": "^0.11.0",
+    "@kensnzk/koyu": "^0.13.0",
     "@kensnzk/koyu-design-system": "^0.3.0",
     "codemirror": "^6.0.1",
     "react": "^18.3.1",

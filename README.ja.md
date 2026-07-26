@@ -30,6 +30,16 @@ npm run typecheck
 npm run build          # dist/index.html — ビューワー全体が単一HTML
 npm run embed -- examples/mansion.muro   # モデル埋め込みの配布用HTMLを生成
 npm run sync-examples  # インストール済み koyu から同梱例を更新
+
+npm run koyu:local            # 隣の koyu 作業ツリーを見る
+npm run koyu:local -- aef5b67 # …または koyu の特定のコミット (タグ・ブランチも可)
+npm run koyu:status           # 今どの koyu に繋がっているか
+npm run koyu:unlink           # 公開版へ戻す
+```
+
+`koyu:local` は `node_modules/@kensnzk/koyu` をシンボリックリンクに差し替えるので、vite も `tsc` も vitest も同じツリーを見る — koyu の変更を**公開せずに**平面と3Dで確かめられる ([ADR-0005](docs/decisions/0005-local-koyu-pipeline.md))。CIは無関係で、`npm ci` がレジストリ版に戻す。だから向こうが赤いときは「使っている版がまだ公開されていない」という正しい知らせである。
+
+```sh
 ```
 
 ビルド産物は常に単一HTML。`dist/index.html` をそのまま送れば誰でもブラウザで開ける。[ugatsu.dev](https://ugatsu.dev) が配信しているのもこの一枚 — Vercelの静的配信で、デプロイの実体は `vercel.json` だけ ([ADR-0004](docs/decisions/0004-demo-site.md))。

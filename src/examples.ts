@@ -18,6 +18,17 @@ import houseSite from "../examples/house/site.muro?raw";
 import mansion from "../examples/mansion.muro?raw";
 import office from "../examples/office.muro?raw";
 import twoRooms from "../examples/two-rooms.muro?raw";
+import bsMain from "../examples/basement/main.muro?raw";
+import cxMain from "../examples/complex/main.muro?raw";
+import cxAssets from "../examples/complex/assets.muro?raw";
+import cxSite from "../examples/complex/site.muro?raw";
+import cxCore from "../examples/complex/core.muro?raw";
+import cxBasement from "../examples/complex/basement.muro?raw";
+import cxL1 from "../examples/complex/L1.muro?raw";
+import cxPodium from "../examples/complex/podium.muro?raw";
+import cxPlant from "../examples/complex/plant.muro?raw";
+import cxOffice from "../examples/complex/office.muro?raw";
+import cxHotel from "../examples/complex/hotel.muro?raw";
 
 export interface Example {
   key: string;
@@ -68,6 +79,24 @@ export const EXAMPLES: Example[] = [
     },
     entry: "main.muro",
   },
+  single("basement", "地下駐車場 — 縦動線の最小例 (斜路・階段・EV)", "main.muro", bsMain),
+  {
+    key: "complex",
+    label: "特大複合建築 — 延床31,924㎡ / 地下2+19階 (商業・機械階・事務所・ホテル)",
+    files: {
+      "main.muro": cxMain,
+      "assets.muro": cxAssets,
+      "site.muro": cxSite,
+      "core.muro": cxCore,
+      "basement.muro": cxBasement,
+      "L1.muro": cxL1,
+      "podium.muro": cxPodium,
+      "plant.muro": cxPlant,
+      "office.muro": cxOffice,
+      "hotel.muro": cxHotel,
+    },
+    entry: "main.muro",
+  },
 ];
 
-export const DEFAULT_EXAMPLE = EXAMPLES.find((e) => e.key === "tower")!;
+export const DEFAULT_EXAMPLE = EXAMPLES.find((e) => e.key === "complex")!;

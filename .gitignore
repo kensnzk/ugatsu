@@ -7,3 +7,7 @@ dist/
 
 # Mac側の退避場所 (ブリッジは削除不可のためmvで退避)
 _to_delete/
+
+# koyu をローカルのコミットで見るときの取り出し先 (npm run koyu:local)
+.koyu/
+.koyu-local.json
