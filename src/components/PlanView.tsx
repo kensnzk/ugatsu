@@ -304,14 +304,17 @@ export function PlanView() {
   const wallMarks: ReactNode[] = [];
   const openingMarks: ReactNode[] = [];
   const placedOpenings: Array<{ b: Boundary; o: Opening; seg: Segment; cx: number; cy: number }> = [];
-  for (const b of model.boundaries) {
+  // **鍵に b.line は使えない。**既定境界 (ADR-0014) は書かれていないので line を持たず、
+  // 全部が 0 になる — 導出された壁が二本以上ある階で React のキーが衝突する。
+  // 走査の順番 (bi) が境界の一意な名前である
+  for (const [bi, b] of model.boundaries.entries()) {
     const onLevel = [b.a, b.b].some((p) => model.spaces.get(p)?.level === planLevel);
     if (!onLevel) continue;
     if (b.kind === "open") {
       for (const [i, seg] of segmentsFor(model, b).entries()) {
         wallMarks.push(
           <line
-            key={`o${b.line}#${i}`}
+            key={`o${bi}#${i}`}
             x1={sx(seg.x1)}
             y1={sy(seg.y1)}
             x2={sx(seg.x2)}
@@ -330,7 +333,7 @@ export function PlanView() {
       for (const [i, seg] of segmentsFor(model, b).entries()) {
         wallMarks.push(
           <line
-            key={`air${b.line}#${i}`}
+            key={`air${bi}#${i}`}
             x1={sx(seg.x1)}
             y1={sy(seg.y1)}
             x2={sx(seg.x2)}
@@ -346,8 +349,8 @@ export function PlanView() {
         const placed = placeOpening(model, b, o);
         if ("error" in placed) continue;
         openingMarks.push(
-          <rect key={`aircut${b.line}#${i}`} {...bandRect(placed.segment, o.w, placed.cx, placed.cy, 120, sx, sy)} fill={PAPER} />,
-          <g key={`airdoor${b.line}#${i}`}>{doorSwing(model, b, o, placed.segment, placed.cx, placed.cy, sx, sy)}</g>,
+          <rect key={`aircut${bi}#${i}`} {...bandRect(placed.segment, o.w, placed.cx, placed.cy, 120, sx, sy)} fill={PAPER} />,
+          <g key={`airdoor${bi}#${i}`}>{doorSwing(model, b, o, placed.segment, placed.cx, placed.cy, sx, sy)}</g>,
         );
       }
       continue;
@@ -355,21 +358,21 @@ export function PlanView() {
     const t = b.t ?? WALL_DEFAULT_T;
     for (const [i, seg] of segmentsFor(model, b).entries()) {
       wallMarks.push(
-        <rect key={`w${b.line}#${i}`} {...wallRect(seg, t, sx, sy)} fill={DRAWING} />,
+        <rect key={`w${bi}#${i}`} {...wallRect(seg, t, sx, sy)} fill={DRAWING} />,
       );
     }
     for (const [i, g] of b.segs.entries()) {
       const placed = placeBand(model, b, g, "seg");
       if ("error" in placed) continue;
       wallMarks.push(
-        <rect key={`s${b.line}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill={DERIVED} />,
+        <rect key={`s${bi}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill={DERIVED} />,
       );
       const spec = g.attrs["spec"];
       if (typeof spec === "string") {
         const h = placed.segment.horizontal;
         wallMarks.push(
           <text
-            key={`sl${b.line}#${i}`}
+            key={`sl${bi}#${i}`}
             x={sx(placed.cx) + (h ? 0 : 160)}
             y={sy(placed.cy) + (h ? -140 : 60)}
             textAnchor={h ? "middle" : "start"}

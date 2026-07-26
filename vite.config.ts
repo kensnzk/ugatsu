@@ -1,5 +1,6 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { configDefaults } from "vitest/config";
 import { viteSingleFile } from "vite-plugin-singlefile";
 
 // ビルドは常に単一HTML (MUN-143: 一つのファイルとして閲覧できるビューワー)。
@@ -14,4 +15,8 @@ export default defineConfig({
   //   2. 事前バンドル (optimizeDeps) に取り込まれると、その版がキャッシュに固定される
   optimizeDeps: { exclude: ["@kensnzk/koyu"] },
   server: { watch: { ignored: ["!**/node_modules/@kensnzk/koyu/**"] } },
+  // **.koyu/ は穿つのテストではない。**koyu を特定のコミットで見るために取り出した
+  // git worktree (ADR-0005) で、koyu 側のテストは node --test で走る。vitest が拾うと
+  // 「テストスイートが無い」と言って21ファイルが落ち、**本当の失敗が埋もれる**。
+  test: { exclude: [...configDefaults.exclude, ".koyu/**"] },
 });
