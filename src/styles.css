@@ -91,6 +91,13 @@ input:focus-visible {
   letter-spacing: var(--tracking-wide);
   line-height: var(--lh-xs);
 }
+/* 版 — 常に見える位置に置く。hover で koyu と muro の版まで出る (ADR-0006) */
+.brand-version {
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  line-height: var(--lh-xs);
+}
 .file-name {
   color: var(--text-1);
   font-size: var(--text-xs);
@@ -504,6 +511,14 @@ input:focus-visible {
   background: var(--bg-active);
   font-weight: var(--weight-medium);
 }
+/* 延べ面積に算入しない行 (屋外・半屋外・吹抜け) — 数は出すが、算入しないことが読めるように淡く */
+.row-aside td {
+  color: var(--text-3);
+}
+.aside-row td {
+  background: var(--bg-subtle);
+  color: var(--text-2);
+}
 .summary-grid {
   display: flex;
   gap: var(--space-6);
@@ -550,6 +565,11 @@ input:focus-visible {
 .kv td:first-child {
   color: var(--text-2);
   width: 40%;
+}
+/* 版の三本 — 別々に動くので一行にまとめない (ADR-0006) */
+.version-cell {
+  font-family: var(--font-mono);
+  color: var(--text-2);
 }
 .status-inline {
   display: inline-flex;

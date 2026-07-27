@@ -3,6 +3,7 @@ import { svgPlan, toCanonical } from "@kensnzk/koyu";
 import { EXAMPLES } from "../examples.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
 import { Button, Icon } from "../lib/ds.js";
+import { UGATSU_VERSION, VERSION_LINE } from "../lib/versions.js";
 import { useViewer } from "../state/store.js";
 import { Dropdown } from "./Dropdown.js";
 import { ToolIcon } from "./ui.js";
@@ -44,8 +45,10 @@ export function Toolbar() {
 
   return (
     <header className="toolbar">
-      <div className="brand">
+      {/* 版は常に見えていること — どの版の形を見ているかを言えない配布物は凍結できない (ADR-0006) */}
+      <div className="brand" title={VERSION_LINE}>
         <strong>UGATSU</strong>
+        <span className="brand-version">{UGATSU_VERSION}</span>
       </div>
       <span className={`file-status status-${status}`}>
         <Icon name={statusIcon} size={14} />

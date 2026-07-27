@@ -1,12 +1,41 @@
+import { createRequire } from "node:module";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import { configDefaults } from "vitest/config";
 import { viteSingleFile } from "vite-plugin-singlefile";
+import { DEFAULT_LANGUAGE_VERSION } from "@kensnzk/koyu";
+
+const require = createRequire(import.meta.url);
+const UGATSU_VERSION: string = require("./package.json").version;
+// **実際に解決された koyu** の版を読む。package.json の範囲指定 (`^0.15.0`) ではなく、
+// このビルドに焼き込まれた実体でなければ、埋め込んだ版が嘘になる (ADR-0005 のリンク時も同じ)
+const KOYU_VERSION: string = require("@kensnzk/koyu/package.json").version;
+
+/**
+ * 配布HTMLに版を刻む (ADR-0006)。**どの版の形を見ているかを言えない配布物は凍結できない。**
+ * meta は React のマウント前から在るので、`exportEmbeddedHtml` が写す素のHTMLにも残る。
+ */
+function stampVersions(): Plugin {
+  return {
+    name: "ugatsu-version-meta",
+    transformIndexHtml() {
+      return [
+        { tag: "meta", attrs: { name: "ugatsu:version", content: UGATSU_VERSION }, injectTo: "head" },
+        { tag: "meta", attrs: { name: "koyu:version", content: KOYU_VERSION }, injectTo: "head" },
+        { tag: "meta", attrs: { name: "muro:version", content: DEFAULT_LANGUAGE_VERSION }, injectTo: "head" },
+      ];
+    },
+  };
+}
 
 // ビルドは常に単一HTML (MUN-143: 一つのファイルとして閲覧できるビューワー)。
 // dist/index.html がそのまま配布物になり、scripts/embed-model.mjs でモデルを埋め込める。
 export default defineConfig({
-  plugins: [react(), viteSingleFile()],
+  plugins: [react(), stampVersions(), viteSingleFile()],
+  define: {
+    __UGATSU_VERSION__: JSON.stringify(UGATSU_VERSION),
+    __KOYU_VERSION__: JSON.stringify(KOYU_VERSION),
+  },
   build: { chunkSizeWarningLimit: 4096 },
   // koyu をローカルのツリーへリンクしているとき (npm run koyu:local — ADR-0005) の二つの罠を塞ぐ。
   // どちらも「リンク先の変更が画面に伝わらない」という同じ症状になり、
