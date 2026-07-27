@@ -300,7 +300,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     const glassMat = new THREE.MeshLambertMaterial({
       color: GLASS(),
       transparent: true,
-      opacity: 0.55,
+      opacity: 0.3,
     });
     // ガラスの外皮 (カーテンウォール・サッシ) は壁ごと透かす — 外から中の見える建ち方
     // spec は自由語 (koyu ADR-0020) なので、これは意味論ではなくビューアの表現である
@@ -327,6 +327,15 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       const h = isAir ? railH : wallH;
       const t = isAir ? Math.min(b.t ?? 60, 80) : (b.t ?? 100);
       const mat = isAir ? railMat : isGlassSpec(b.attrs["spec"]) ? glassWallMat : wallMat;
+      // 開口はこの境界のどの線分に載るかを先に確かめておく — 壁は開口の**周り**に組む。
+      // 窓の裏に壁の箱が残ると、ガラスをいくら透かしても中は見えない
+      const placedOpenings =
+        isAir || !opts.showOpenings
+          ? []
+          : b.openings.flatMap((o) => {
+              const placed = placeOpening(model, b, o);
+              return "error" in placed ? [] : [{ o, placed }];
+            });
       for (const seg of segmentsFor(model, b)) {
         if (seg.diagonal) {
           // 描かれた線 (koyu ADR-0022) は斜めになりうる。芯線に沿った箱をY軸まわりに回す。
@@ -347,24 +356,71 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
           group.add(m);
           continue;
         }
-        const m = seg.horizontal
-          ? boxMesh(seg.x2 - seg.x1, h, t, tx((seg.x1 + seg.x2) / 2), ty(z0) + h / 2, tz(seg.y1), mat)
-          : boxMesh(t, h, seg.y2 - seg.y1, tx(seg.x1), ty(z0) + h / 2, tz((seg.y1 + seg.y2) / 2), mat);
-        group.add(m);
-      }
-      if (isAir || !opts.showOpenings) continue;
-      for (const o of b.openings) {
-        const placed = placeOpening(model, b, o);
-        if ("error" in placed) continue;
-        const isDoor = o.kind === "door";
-        const oh = o.h ?? (isDoor ? 2000 : 1200);
-        const sill = isDoor ? 0 : typeof o.attrs["sill"] === "number" ? (o.attrs["sill"] as number) : 800;
-        const thick = t + 60;
-        const { segment, cx, cy } = placed;
-        const m = segment.horizontal
-          ? boxMesh(o.w, oh, thick, tx(cx), ty(z0 + sill) + oh / 2, tz(cy), isDoor ? doorMat : glassMat)
-          : boxMesh(thick, oh, o.w, tx(cx), ty(z0 + sill) + oh / 2, tz(cy), isDoor ? doorMat : glassMat);
-        group.add(m);
+        const horiz = seg.horizontal;
+        // 軸に沿った壁の断片 (a1..a2 × zb..zb+zh) を置く
+        const piece = (a1: number, a2: number, zb: number, zh: number) => {
+          if (a2 - a1 < 1 || zh < 1) return;
+          const m = horiz
+            ? boxMesh(a2 - a1, zh, t, tx((a1 + a2) / 2), ty(zb) + zh / 2, tz(seg.y1), mat)
+            : boxMesh(t, zh, a2 - a1, tx(seg.x1), ty(zb) + zh / 2, tz((a1 + a2) / 2), mat);
+          group.add(m);
+        };
+        const s1 = horiz ? seg.x1 : seg.y1;
+        const s2 = horiz ? seg.x2 : seg.y2;
+        const inSeg = placedOpenings
+          .filter(({ placed }) => {
+            const g = placed.segment;
+            return (
+              g.horizontal === horiz &&
+              Math.abs(g.x1 - seg.x1) < 1 &&
+              Math.abs(g.y1 - seg.y1) < 1 &&
+              Math.abs(g.x2 - seg.x2) < 1 &&
+              Math.abs(g.y2 - seg.y2) < 1
+            );
+          })
+          .map(({ o, placed }) => {
+            const isDoor = o.kind === "door";
+            const oh = o.h ?? (isDoor ? 2000 : 1200);
+            const sill = isDoor
+              ? 0
+              : typeof o.attrs["sill"] === "number"
+                ? (o.attrs["sill"] as number)
+                : 800;
+            const c = horiz ? placed.cx : placed.cy;
+            return {
+              o,
+              placed,
+              isDoor,
+              oh,
+              sill,
+              lo: Math.max(s1, c - o.w / 2),
+              hi: Math.min(s2, c + o.w / 2),
+            };
+          })
+          .sort((a, b2) => a.lo - b2.lo);
+        if (inSeg.length === 0) {
+          piece(s1, s2, z0, h);
+          continue;
+        }
+        // 開口の間の全高の壁
+        let cur = s1;
+        for (const sp of inSeg) {
+          if (sp.lo > cur) piece(cur, sp.lo, z0, h);
+          cur = Math.max(cur, sp.hi);
+        }
+        piece(cur, s2, z0, h);
+        // 各開口の腰壁・垂れ壁と、開口そのもの (扉・ガラス)
+        for (const sp of inSeg) {
+          if (sp.sill > 0) piece(sp.lo, sp.hi, z0, sp.sill);
+          const top = sp.sill + sp.oh;
+          if (top < h) piece(sp.lo, sp.hi, z0 + top, h - top);
+          const thick = t + 60;
+          const { cx, cy } = sp.placed;
+          const m = horiz
+            ? boxMesh(sp.o.w, sp.oh, thick, tx(cx), ty(z0 + sp.sill) + sp.oh / 2, tz(cy), sp.isDoor ? doorMat : glassMat)
+            : boxMesh(thick, sp.oh, sp.o.w, tx(cx), ty(z0 + sp.sill) + sp.oh / 2, tz(cy), sp.isDoor ? doorMat : glassMat);
+          group.add(m);
+        }
       }
     }
   }
