@@ -302,6 +302,15 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       transparent: true,
       opacity: 0.55,
     });
+    // ガラスの外皮 (カーテンウォール・サッシ) は壁ごと透かす — 外から中の見える建ち方
+    // spec は自由語 (koyu ADR-0020) なので、これは意味論ではなくビューアの表現である
+    const glassWallMat = new THREE.MeshLambertMaterial({
+      color: GLASS(),
+      transparent: true,
+      opacity: 0.28,
+    });
+    const isGlassSpec = (v: unknown) =>
+      typeof v === "string" && /カーテンウォール|ガラス|サッシ|glass/i.test(v);
     const railMat = new THREE.MeshLambertMaterial({
       color: GHOST(),
       transparent: true,
@@ -317,7 +326,7 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       const railH = typeof b.attrs["h"] === "number" ? (b.attrs["h"] as number) : 1100;
       const h = isAir ? railH : wallH;
       const t = isAir ? Math.min(b.t ?? 60, 80) : (b.t ?? 100);
-      const mat = isAir ? railMat : wallMat;
+      const mat = isAir ? railMat : isGlassSpec(b.attrs["spec"]) ? glassWallMat : wallMat;
       for (const seg of segmentsFor(model, b)) {
         if (seg.diagonal) {
           // 描かれた線 (koyu ADR-0022) は斜めになりうる。芯線に沿った箱をY軸まわりに回す。
