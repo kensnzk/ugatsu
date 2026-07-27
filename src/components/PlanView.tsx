@@ -357,6 +357,13 @@ export function PlanView() {
     }
     const t = b.t ?? WALL_DEFAULT_T;
     for (const [i, seg] of segmentsFor(model, b).entries()) {
+      if (seg.diagonal) {
+        // 描かれた線 (ADR-0022) の壁 — 芯線の法線方向へ t/2 ずつ振った四辺形
+        wallMarks.push(
+          <polygon key={`w${bi}#${i}`} points={diagWallPoints(seg, t, sx, sy)} fill={DRAWING} />,
+        );
+        continue;
+      }
       wallMarks.push(
         <rect key={`w${bi}#${i}`} {...wallRect(seg, t, sx, sy)} fill={DRAWING} />,
       );
@@ -548,6 +555,26 @@ export function PlanView() {
       <Legend colors={colors} />
     </div>
   );
+}
+
+function diagWallPoints(
+  seg: Segment,
+  t: number,
+  sx: (x: number) => number,
+  sy: (y: number) => number,
+): string {
+  const dx = seg.x2 - seg.x1;
+  const dy = seg.y2 - seg.y1;
+  const len = Math.hypot(dx, dy) || 1;
+  const nx = (-dy / len) * (t / 2);
+  const ny = (dx / len) * (t / 2);
+  const q: Array<[number, number]> = [
+    [seg.x1 + nx, seg.y1 + ny],
+    [seg.x2 + nx, seg.y2 + ny],
+    [seg.x2 - nx, seg.y2 - ny],
+    [seg.x1 - nx, seg.y1 - ny],
+  ];
+  return q.map(([x, y]) => `${sx(x)},${sy(y)}`).join(" ");
 }
 
 function wallRect(

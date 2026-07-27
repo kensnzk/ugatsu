@@ -110,7 +110,7 @@ export const EXAMPLES: Example[] = [
   },
   {
     key: "twin",
-    label: "双塔複合建築 — 延床259,519㎡ / 地下2+28階 (物理31層。商業・事務所・ホテル・レジデンス)",
+    label: "双塔複合建築 — 延床141,449㎡ / 地下2+34階 (商業・事務所・ホテル・レジデンス)",
     files: {
       "main.muro": twMain,
       "assets.muro": twAssets,
