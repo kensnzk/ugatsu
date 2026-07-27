@@ -29,6 +29,17 @@ import cxPodium from "../examples/complex/podium.muro?raw";
 import cxPlant from "../examples/complex/plant.muro?raw";
 import cxOffice from "../examples/complex/office.muro?raw";
 import cxHotel from "../examples/complex/hotel.muro?raw";
+import twMain from "../examples/twin/main.muro?raw";
+import twAssets from "../examples/twin/assets.muro?raw";
+import twSite from "../examples/twin/site.muro?raw";
+import twCore from "../examples/twin/core.muro?raw";
+import twBasement from "../examples/twin/basement.muro?raw";
+import twL1 from "../examples/twin/L1.muro?raw";
+import twPodium from "../examples/twin/podium.muro?raw";
+import twL5 from "../examples/twin/L5.muro?raw";
+import twOffice from "../examples/twin/office.muro?raw";
+import twHotel from "../examples/twin/hotel.muro?raw";
+import twResidence from "../examples/twin/residence.muro?raw";
 
 export interface Example {
   key: string;
@@ -82,7 +93,7 @@ export const EXAMPLES: Example[] = [
   single("basement", "地下駐車場 — 縦動線の最小例 (斜路・階段・EV)", "main.muro", bsMain),
   {
     key: "complex",
-    label: "特大複合建築 — 延床31,924㎡ / 地下2+19階 (商業・機械階・事務所・ホテル)",
+    label: "特大複合建築 — 延床31,606㎡ / 地下2+19階 (商業・機械階・事務所・ホテル)",
     files: {
       "main.muro": cxMain,
       "assets.muro": cxAssets,
@@ -94,6 +105,24 @@ export const EXAMPLES: Example[] = [
       "plant.muro": cxPlant,
       "office.muro": cxOffice,
       "hotel.muro": cxHotel,
+    },
+    entry: "main.muro",
+  },
+  {
+    key: "twin",
+    label: "双塔複合建築 — 延床259,519㎡ / 地下2+28階 (物理31層。商業・事務所・ホテル・レジデンス)",
+    files: {
+      "main.muro": twMain,
+      "assets.muro": twAssets,
+      "site.muro": twSite,
+      "core.muro": twCore,
+      "basement.muro": twBasement,
+      "L1.muro": twL1,
+      "podium.muro": twPodium,
+      "L5.muro": twL5,
+      "office.muro": twOffice,
+      "hotel.muro": twHotel,
+      "residence.muro": twResidence,
     },
     entry: "main.muro",
   },
