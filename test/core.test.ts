@@ -16,6 +16,7 @@ import {
   zoneAreaM2,
 } from "@kensnzk/koyu";
 import { buildColors } from "../src/lib/colors.js";
+import { formOf } from "../src/lib/form.js";
 import { computeStats, statsToCsv } from "../src/lib/stats.js";
 import {
   KOYU_VERSION,
@@ -120,7 +121,9 @@ describe("合成 (koyu ADR-0010 — v0.6)", () => {
   it("コンフリクト: 別レイヤーの空間パス重複は出所つきで落ちる", () => {
     const files = loadLayers();
     files["L2.muro"] += "\nspace /home/ldk room X1..X2 Y1..Y3 level:L2\n";
-    expect(() => parseFiles(files, "main.muro")).toThrowError(/L2\.muro.*空間パスが重複.*L1\.muro/s);
+    expect(() => parseFiles(files, "main.muro")).toThrowError(
+      /L2\.muro.*Duplicate space path.*L1\.muro/s,
+    );
   });
 
   it("checkエラーも出所レイヤーつき (壁からのはみ出し)", () => {
@@ -129,7 +132,7 @@ describe("合成 (koyu ADR-0010 — v0.6)", () => {
     const m = parseFiles(files, "main.muro");
     const errs = check(m).errors;
     expect(errs.length).toBeGreaterThan(0);
-    expect(errs[0]).toMatch(/^L1\.muro:\d+行目.*はみ出します/);
+    expect(errs[0]).toMatch(/^L1\.muro:line \d+:.*runs off the boundary segment/);
   });
 });
 
@@ -168,7 +171,7 @@ describe("ショーケース (tower — 9レイヤー合成 + polygon敷地)", (
   it("3D: 壁は階高いっぱいに立ち上がる (天井高で止まらない)", () => {
     const m = parseFiles(loadTower(), "main.muro");
     const colors = buildColors(m, "use");
-    const built = buildScene(m, {
+    const built = buildScene(formOf(m), {
       colors,
       stackMode: false,
       spread: 1,
@@ -312,6 +315,33 @@ describe("動線UIは到達可能である (ADR-0006)", () => {
   });
 });
 
+// **構造化診断が一次形式である** (koyu ADR-0016)。かつて store は `check` が返した
+// 文字列を受け、正規表現で出所を復元していた — コードも `related` も取れず、
+// koyu が機械向け出力を英語へ揃えた時点で黙って壊れる作りだった (docs/scope.md §7)。
+describe("診断はコードと出所を構造で持つ (koyu ADR-0016)", () => {
+  it("エラーは code / severity / 出所レイヤー / 行 を持つ", () => {
+    const files = Object.fromEntries(
+      ["main.muro", "assets.muro", "site.muro", "L1.muro", "L2.muro"].map((f) => [
+        f,
+        readFileSync(`examples/house/${f}`, "utf8"),
+      ]),
+    );
+    files["L1.muro"] = files["L1.muro"]!.replace("at:Y2+1820", "at:Y2+3500");
+    useViewer.getState().setFiles(files, "main.muro");
+    const errs = useViewer.getState().checkErrors;
+    expect(errs.length).toBeGreaterThan(0);
+    expect(errs[0]!.severity).toBe("error");
+    expect(errs[0]!.code).toMatch(/^[A-Z]{3}\d{2}$/);
+    expect(errs[0]!.file).toBe("L1.muro");
+    expect(errs[0]!.line).toBeGreaterThan(0);
+  });
+
+  it("整合していれば診断は空になる", () => {
+    useViewer.getState().setSource(readFileSync("examples/office.muro", "utf8"), "office.muro");
+    expect(useViewer.getState().checkErrors).toEqual([]);
+  });
+});
+
 describe("シーン生成", () => {
   it("Cartesian grid は既定で非表示にし、検査時だけ明示的に有効化する", () => {
     expect(useViewer.getState().showGrid).toBe(false);
@@ -323,7 +353,7 @@ describe("シーン生成", () => {
   it("3D: 領域を持つ空間がすべてピック対象になり、壁メッシュが生まれる", () => {
     const m = load("office.muro");
     const colors = buildColors(m, "use");
-    const built = buildScene(m, {
+    const built = buildScene(formOf(m), {
       colors,
       stackMode: false,
       spread: 1,
@@ -341,7 +371,7 @@ describe("シーン生成", () => {
   it("2.5D: 吹抜けにはプレートを置かない (床の不在)", () => {
     const m = load("office.muro");
     const colors = buildColors(m, "level");
-    const built = buildScene(m, {
+    const built = buildScene(formOf(m), {
       colors,
       stackMode: true,
       spread: 2,
@@ -356,7 +386,7 @@ describe("シーン生成", () => {
   it("レベルを隠すとそのレベルの空間が消える", () => {
     const m = load("office.muro");
     const colors = buildColors(m, "use");
-    const built = buildScene(m, {
+    const built = buildScene(formOf(m), {
       colors,
       stackMode: false,
       spread: 1,

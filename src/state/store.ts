@@ -4,10 +4,11 @@
 // 各レイヤーは分担の単位で、合成 (parseFiles) のコンフリクトは出所つきのエラーになる。
 import { create } from "zustand";
 import {
-  check,
+  checkDiagnostics,
   doorsBetween,
   parseFiles,
   SourceError,
+  type Diagnostic,
   type Model,
   type Route,
 } from "@kensnzk/koyu";
@@ -51,8 +52,12 @@ export interface ViewerState {
   /** カメラをフィットし直す合図 (ファイル切替のたびに変わる) */
   fitKey: string;
   parseError: ParseErrorInfo | null;
-  checkErrors: string[];
-  checkWarnings: string[];
+  /**
+   * `check` の診断 — **構造化診断が一次形式である** (koyu ADR-0016)。
+   * コードも出所も `related` も、人向けの文字列を正規表現で解く必要はない
+   */
+  checkErrors: Diagnostic[];
+  checkWarnings: Diagnostic[];
 
   mainView: MainView;
   colorMode: ColorMode;
@@ -124,7 +129,7 @@ export const useViewer = create<ViewerState>()((set, get) => {
     };
     try {
       const model = parseFiles(files, entry);
-      const { errors, warnings } = check(model);
+      const diagnostics = checkDiagnostics(model);
       const levels = levelsWithRooms(model);
       const planLevel =
         !fresh && st.planLevel && levels.includes(st.planLevel)
@@ -139,8 +144,8 @@ export const useViewer = create<ViewerState>()((set, get) => {
         modelKey: st.modelKey + 1,
         fitKey: fresh ? entry + String(st.modelKey) : st.fitKey,
         parseError: null,
-        checkErrors: errors,
-        checkWarnings: warnings,
+        checkErrors: diagnostics.filter((d) => d.severity === "error"),
+        checkWarnings: diagnostics.filter((d) => d.severity === "warning"),
         planLevel,
         hiddenLevels: fresh ? {} : st.hiddenLevels,
         selected,

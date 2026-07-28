@@ -1,24 +1,24 @@
-// モデル → three.js シーン。形はここで初めて生まれる — ソースに形は無い。
-// 3Dモード: 空間を天井高で押し出し、壁境界を厚み付きで生成、開口を壁面に置く。
+// `Form` → three.js シーン。**形はここで生まれない。**
+//
+// 空間の気積も、壁が開口で割られた区間も、柱の z 範囲も、段板の立体も、床・天井・屋根も、
+// koyu の `derive(model)` が返す `Form` に既に入っている (koyu ADR-0040 / spec/derivation.md)。
+// ここが持つのは材質・透過・色・見付け厚・地面の板 — すべて見た目である。
+//
+// かつてここは `segmentsFor` `placeOpening` `slabs` `columnsFor` `runSolids` を個別に呼び、
+// 壁を開口で割る手も、開口の高さも窓台も、階高の近似 (2400mm) も**自前で持っていた**。
+// koyu 側の同じ規則と食い違う余地が構造的に残り、実際に食い違っていた。
+//
+// 3Dモード: `Form` の気積・壁の区間・開口・柱・縦動線・面をそのまま立体へ写す。
 // 2.5Dモード: 各レベルの床プレートを重ね、展開係数で持ち上げる (吹抜けは床の不在=穴)。
 import * as THREE from "three";
-import {
-  columnsFor,
-  heff,
-  isSemiOutdoor,
-  placeOpening,
-  polyBounds,
-  rectToPoly,
-  runSolids,
-  slabs,
-  segmentsFor,
-  verticalRuns,
-  type Boundary,
-  type Model,
-  type Pt,
-  type RunSolid,
-  type Slab,
-  type Space,
+import type {
+  Form,
+  FormBoundary,
+  FormPanel,
+  Model,
+  Pt,
+  RunSolid,
+  Slab,
 } from "@kensnzk/koyu";
 import type { ModelColors } from "../lib/colors.js";
 import { token, tokenColor } from "../lib/theme.js";
@@ -28,10 +28,16 @@ export interface SceneOptions {
   stackMode: boolean;
   spread: number;
   showWalls: boolean;
+  /** 建具 (扉・ガラス) を置くか。**壁が開口で割られること自体は形なので消せない** */
   showOpenings: boolean;
   /** 床・天井・屋根を描くか (既定 true) */
   showFabric?: boolean;
   hiddenLevels: Record<string, true>;
+  /**
+   * 境界を透過で描くか。`spec` は**書かれた自由語**であり koyu は解釈しない —
+   * 語の意味を決めるのは ugatsu なので、判断は外から渡す (docs/scope.md §5.2)
+   */
+  glass?: (b: FormBoundary) => boolean;
 }
 
 // 描画色は drawing セマンティックから遅延導出し、製品クロームとデータを分離する。
@@ -41,8 +47,13 @@ const EDGE = () => tokenColor("--drawing-derived");
 const DOOR = () => tokenColor("--drawing-line");
 const GLASS = () => tokenColor("--drawing-line-muted");
 const GHOST = () => tokenColor("--drawing-line-muted"); // 吹抜け・開放・柵
-const DEFAULT_H = 2400;
+
+/** 2.5D の床プレート厚 mm (図の体裁) */
 const PLATE_T = 120;
+/** 半屋外を気積ではなく地面として描くときの板厚 mm (原本に対応物は無い) */
+const GROUND_T = 150;
+/** 建具の見付け厚の増し mm (壁厚に足す — 面から少し出して見えるようにする) */
+const JOINERY_T = 60;
 
 /** 世界座標 (x東+, y北+, z上+, mm) → three (x, y=z, z=-y) */
 const tx = (x: number) => x;
@@ -55,35 +66,16 @@ export interface BuiltScene {
   pickables: THREE.Mesh[];
 }
 
-function spaceHeight(model: Model, s: Space): number {
-  return heff(model, s) ?? DEFAULT_H;
-}
-
-/** レベルの階高 (次のレベルのzまで)。最上階は 天井高+slab で近似 */
-function levelPitch(model: Model, levelName: string): number | undefined {
-  const level = model.levels[levelName];
-  if (!level) return undefined;
-  const above = Object.values(model.levels)
-    .filter((l) => l.z > level.z)
-    .sort((a, b) => a.z - b.z)[0];
-  if (above) return above.z - level.z;
-  return level.h !== undefined ? level.h + (level.slab ?? 0) : undefined;
-}
-
-function wallLevelAndHeight(model: Model, b: Boundary): { level?: string; z: number; h: number } {
-  const sa = model.spaces.get(b.a);
-  const sb = model.spaces.get(b.b);
-  const roomA = sa && sa.rects.length > 0 ? sa : undefined;
-  const roomB = sb && sb.rects.length > 0 ? sb : undefined;
-  const room = roomA ?? roomB;
-  if (!room?.level) return { z: 0, h: DEFAULT_H };
-  const z = model.levels[room.level]?.z ?? 0;
-  // 壁は階高いっぱいに立ち上がる (躯体の連続 — 天井高は内装の面)。
-  // 天井高で止めると次の床プレートとの間にスラブ+懐分の隙間が見えてしまう。
-  // 吹抜け上部の壁は上階のvoid空間側の境界が担うので、ここは常に自レベルの階高でよい。
-  const hs = [roomA, roomB].filter((r): r is Space => !!r).map((r) => spaceHeight(model, r));
-  const ceil = Math.max(...(hs.length ? hs : [DEFAULT_H]));
-  return { level: room.level, z, h: levelPitch(model, room.level) ?? ceil };
+/**
+ * `spec` に「ガラス / カーテンウォール / サッシ / glass」を含む境界を透過で描く。
+ * **`spec` は自由語である** (koyu ADR-0020) — 語の意味を決めるのは ugatsu であり、
+ * これは意味論ではなくビューアの表現である
+ */
+export function glassSpec(model: Model): (b: FormBoundary) => boolean {
+  return (b) => {
+    const v = model.boundaries[b.boundary]?.attrs["spec"];
+    return typeof v === "string" && /カーテンウォール|ガラス|サッシ|glass/i.test(v);
+  };
 }
 
 function boxMesh(
@@ -98,6 +90,28 @@ function boxMesh(
   const g = new THREE.BoxGeometry(w, h, d);
   const m = new THREE.Mesh(g, material);
   m.position.set(cx, cy, cz);
+  return m;
+}
+
+/**
+ * 芯線分 (x1,y1)-(x2,y2) に沿った厚み t・高さ z0..z1 の箱。
+ * three は (x, z, -y) なので、+X を (dx, 0, -dy) へ向ける角は atan2(dy, dx)。
+ * **斜めの線分もそのまま立つ** — 軸に沿っているかどうかで分岐しない
+ */
+function segBox(
+  s: { x1: number; y1: number; x2: number; y2: number },
+  z0: number,
+  z1: number,
+  t: number,
+  mat: THREE.Material,
+): THREE.Mesh | null {
+  const dx = s.x2 - s.x1;
+  const dy = s.y2 - s.y1;
+  const len = Math.hypot(dx, dy);
+  const h = z1 - z0;
+  if (len < 1 || h < 1) return null;
+  const m = boxMesh(len, h, t, tx((s.x1 + s.x2) / 2), ty(z0) + h / 2, tz((s.y1 + s.y2) / 2), mat);
+  m.rotation.y = Math.atan2(dy, dx);
   return m;
 }
 
@@ -130,29 +144,31 @@ function textSprite(text: string, sizeMm: number): THREE.Sprite {
   return sp;
 }
 
-export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
+export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
   const group = new THREE.Group();
   const pickables: THREE.Mesh[] = [];
   const { colors, stackMode, spread, hiddenLevels } = opts;
 
-  const zOf = (level: string | undefined): number => {
-    const z = level ? (model.levels[level]?.z ?? 0) : 0;
-    return z * (stackMode ? spread : 1);
-  };
+  const levelZ = new Map(form.levels.map((l) => [l.name, l.z]));
+  const zOf = (level: string | undefined): number =>
+    (level ? (levelZ.get(level) ?? 0) : 0) * (stackMode ? spread : 1);
   const levelHidden = (level: string | undefined): boolean => !!(level && hiddenLevels[level]);
 
   // ---- 空間 ----
-  for (const s of model.spaces.values()) {
-    if (s.rects.length === 0 || !s.level || levelHidden(s.level)) continue;
-    const z0 = zOf(s.level);
+  // **天井高が決まらない空間には立体を作らない。**koyu は決まらなければ形を作らず
+  // (SUF01 は error)、`Form` はその空間に z を持たない。ここで既定値を捏造すると
+  // 「check が赤いのに立体は完成して見える」ことになる (docs/scope.md §5.2)
+  for (const s of form.spaces) {
+    if (!s.level || levelHidden(s.level)) continue;
+    const base = zOf(s.level);
     const isVoid = s.type === "void";
-    const color = new THREE.Color(colors.colorOf(s));
+    const color = new THREE.Color(colors.byPath(s.path));
 
     if (stackMode) {
       if (isVoid) continue; // 床の不在 — プレートを置かないことが吹抜けの表現
       const mat = new THREE.MeshLambertMaterial({ color });
-      for (const poly of piecesOf(s)) {
-        const m = prismMesh(poly, z0, z0 + PLATE_T, mat);
+      for (const poly of s.outline) {
+        const m = prismMesh(poly, base, base + PLATE_T, mat);
         m.userData.path = s.path;
         group.add(m, edgeLines(m, EDGE(), 0.35));
         pickables.push(m);
@@ -160,24 +176,36 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       continue;
     }
 
-    // 半屋外 (庭・テラス・バルコニー — 導出) は気積でなく地面: 薄いプレートで描く
-    const semi = isSemiOutdoor(model, s);
-    const h = semi ? 150 : spaceHeight(model, s);
+    // 半屋外 (庭・テラス・バルコニー — 導出) は気積でなく地面: 薄い板で描く
+    if (s.semiOutdoor) {
+      const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 });
+      for (const poly of s.outline) {
+        const m = prismMesh(poly, base, base + GROUND_T, mat);
+        m.userData.path = s.path;
+        group.add(m, edgeLines(m, EDGE(), 0.45));
+        pickables.push(m);
+      }
+      continue;
+    }
+    if (s.z0 === undefined || s.z1 === undefined) continue;
     if (isVoid) {
       // 吹抜け: 実体を持たない気積 — 輪郭線だけの幽霊
-      for (const poly of piecesOf(s)) {
-        const m = prismMesh(poly, z0, z0 + h, new THREE.MeshBasicMaterial({ visible: false }));
+      for (const poly of s.outline) {
+        const m = prismMesh(poly, s.z0, s.z1, new THREE.MeshBasicMaterial({ visible: false }));
         m.userData.path = s.path;
         group.add(m, edgeLines(m, GHOST(), 0.55));
         pickables.push(m);
       }
       continue;
     }
-    const mat = semi
-      ? new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 })
-      : new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.5, depthWrite: false });
-    for (const poly of piecesOf(s)) {
-      const m = prismMesh(poly, z0, z0 + h, mat);
+    const mat = new THREE.MeshLambertMaterial({
+      color,
+      transparent: true,
+      opacity: 0.5,
+      depthWrite: false,
+    });
+    for (const poly of s.outline) {
+      const m = prismMesh(poly, s.z0, s.z1, mat);
       m.userData.path = s.path;
       group.add(m, edgeLines(m, EDGE(), 0.45));
       pickables.push(m);
@@ -187,13 +215,10 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
   // ---- 柱 (koyu ADR-0023) — 通り芯の交点と床の交わりから現れる ----
   if (!stackMode) {
     const colMat = new THREE.MeshLambertMaterial({ color: INK() });
-    for (const level of Object.keys(model.levels)) {
-      if (levelHidden(level)) continue;
-      const z = zOf(level);
-      const h = levelPitch(model, level) ?? DEFAULT_H;
-      for (const c of columnsFor(model, level)) {
-        group.add(boxMesh(c.w, h, c.d, tx(c.x), ty(z) + h / 2, tz(c.y), colMat));
-      }
+    for (const c of form.columns) {
+      if (levelHidden(c.level)) continue;
+      const h = c.z1 - c.z0;
+      group.add(boxMesh(c.w, h, c.d, tx(c.x), ty(c.z0) + h / 2, tz(c.y), colMat));
     }
   }
 
@@ -201,15 +226,13 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
   // 段割りも勾配もここでは決めない。koyu が返した立体を幾何に写すだけである
   if (!stackMode) {
     const runMat = new THREE.MeshLambertMaterial({ color: tokenColor("--drawing-derived") });
-    for (const run of verticalRuns(model)) {
+    for (const run of form.runs) {
       if (levelHidden(run.level)) continue;
-      for (const solid of runSolids(run)) group.add(solidMesh(solid, runMat));
+      for (const solid of run.solids) group.add(solidMesh(solid, runMat));
     }
   }
 
   // ---- 面の要素 (koyu ADR-0024): 床・天井・屋根 ----
-  // どれも語彙を持たない — level の slab と space の h が既に宣言しているものを、
-  // koyu が面として返す。ここは押し出すだけである
   if (!stackMode && opts.showFabric !== false) {
     const mats: Record<string, THREE.Material> = {
       floor: new THREE.MeshLambertMaterial({ color: tokenColor("--wash-2") }),
@@ -220,14 +243,14 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       }),
       roof: new THREE.MeshLambertMaterial({ color: INK() }),
     };
-    for (const sl of slabs(model)) {
+    for (const sl of form.slabs) {
       if (levelHidden(sl.level)) continue;
       group.add(slabMesh(sl, mats[sl.kind]!));
     }
   }
 
   // ---- 敷地形状 (ADR-0011): 所与の多角形を地盤面として描き、境界線を引く ----
-  for (const poly of model.polygons.values()) {
+  for (const poly of form.site) {
     const shape = new THREE.Shape(poly.points.map((p) => new THREE.Vector2(p.x, p.y)));
     const g = new THREE.ShapeGeometry(shape);
     g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
@@ -248,21 +271,19 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
     );
   }
 
-  // ---- 壁 (境界から生成) と開口 ----
+  // ---- 壁と開口 ----
   if (stackMode) {
     // プレート上の壁線 (レベルごとに一本のLineSegmentsへまとめる)
     const byLevel = new Map<string, { walls: number[]; opens: number[]; airs: number[] }>();
-    for (const b of model.boundaries) {
+    for (const b of form.boundaries) {
       if (b.kind !== "wall" && b.kind !== "open") continue;
-      const { level, z } = wallLevelAndHeight(model, b);
-      if (!level || levelHidden(level)) continue;
-      const zTop = z * spread + PLATE_T + 20;
-      const bucket = byLevel.get(level) ?? { walls: [], opens: [], airs: [] };
-      byLevel.set(level, bucket);
+      if (!b.level || levelHidden(b.level)) continue;
+      const zTop = zOf(b.level) + PLATE_T + 20;
+      const bucket = byLevel.get(b.level) ?? { walls: [], opens: [], airs: [] };
+      byLevel.set(b.level, bucket);
       const arr = b.kind === "open" ? bucket.opens : b.air ? bucket.airs : bucket.walls;
-      for (const seg of segmentsFor(model, b)) {
-        arr.push(tx(seg.x1), zTop, tz(seg.y1), tx(seg.x2), zTop, tz(seg.y2));
-      }
+      const s = b.segment;
+      arr.push(tx(s.x1), zTop, tz(s.y1), tx(s.x2), zTop, tz(s.y2));
     }
     for (const [level, bucket] of byLevel) {
       for (const [arr, mat] of [
@@ -281,16 +302,13 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
         group.add(lines);
       }
       // レベルラベル
-      const z = (model.levels[level]?.z ?? 0) * spread;
-      const rects = [...model.spaces.values()]
-        .filter((s) => s.level === level)
-        .flatMap((s) => s.rects);
-      if (rects.length && typeof document !== "undefined") {
-        const minX = Math.min(...rects.map((r) => r.x1));
-        const minY = Math.min(...rects.map((r) => r.y1));
-        const maxY = Math.max(...rects.map((r) => r.y2));
+      const pts = form.spaces.filter((s) => s.level === level).flatMap((s) => s.outline.flat());
+      if (pts.length > 0 && typeof document !== "undefined") {
+        const minX = Math.min(...pts.map((p) => p.x));
+        const minY = Math.min(...pts.map((p) => p.y));
+        const maxY = Math.max(...pts.map((p) => p.y));
         const sp = textSprite(level, 900);
-        sp.position.set(tx(minX) - 1500, ty(z) + 400, tz((minY + maxY) / 2));
+        sp.position.set(tx(minX) - 1500, ty(zOf(level)) + 400, tz((minY + maxY) / 2));
         group.add(sp);
       }
     }
@@ -303,124 +321,46 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
       opacity: 0.3,
     });
     // ガラスの外皮 (カーテンウォール・サッシ) は壁ごと透かす — 外から中の見える建ち方
-    // spec は自由語 (koyu ADR-0020) なので、これは意味論ではなくビューアの表現である
     const glassWallMat = new THREE.MeshLambertMaterial({
       color: GLASS(),
       transparent: true,
       opacity: 0.28,
     });
-    const isGlassSpec = (v: unknown) =>
-      typeof v === "string" && /カーテンウォール|ガラス|サッシ|glass/i.test(v);
     const railMat = new THREE.MeshLambertMaterial({
       color: GHOST(),
       transparent: true,
       opacity: 0.75,
     });
-    for (const b of model.boundaries) {
-      if (b.kind !== "wall") continue;
-      const { level, z, h: wallH } = wallLevelAndHeight(model, b);
-      if (!level || levelHidden(level)) continue;
-      const z0 = z;
-      // 遮蔽しない物 (air:1 — 手すり・柵): 腰の高さの薄い板 (ADR-0007)
-      const isAir = !!b.air;
-      const railH = typeof b.attrs["h"] === "number" ? (b.attrs["h"] as number) : 1100;
-      const h = isAir ? railH : wallH;
-      const t = isAir ? Math.min(b.t ?? 60, 80) : (b.t ?? 100);
-      const mat = isAir ? railMat : isGlassSpec(b.attrs["spec"]) ? glassWallMat : wallMat;
-      // 開口はこの境界のどの線分に載るかを先に確かめておく — 壁は開口の**周り**に組む。
-      // 窓の裏に壁の箱が残ると、ガラスをいくら透かしても中は見えない
-      const placedOpenings =
-        isAir || !opts.showOpenings
-          ? []
-          : b.openings.flatMap((o) => {
-              const placed = placeOpening(model, b, o);
-              return "error" in placed ? [] : [{ o, placed }];
-            });
-      for (const seg of segmentsFor(model, b)) {
-        if (seg.diagonal) {
-          // 描かれた線 (koyu ADR-0022) は斜めになりうる。芯線に沿った箱をY軸まわりに回す。
-          // three は (x, z, -y) なので、+X を (dx, 0, -dy) へ向ける角は atan2(dy, dx)
-          const dx = seg.x2 - seg.x1;
-          const dy = seg.y2 - seg.y1;
-          const len = Math.hypot(dx, dy);
-          const m = boxMesh(
-            len,
-            h,
-            t,
-            tx((seg.x1 + seg.x2) / 2),
-            ty(z0) + h / 2,
-            tz((seg.y1 + seg.y2) / 2),
-            mat,
-          );
-          m.rotation.y = Math.atan2(dy, dx);
-          group.add(m);
-          continue;
-        }
-        const horiz = seg.horizontal;
-        // 軸に沿った壁の断片 (a1..a2 × zb..zb+zh) を置く
-        const piece = (a1: number, a2: number, zb: number, zh: number) => {
-          if (a2 - a1 < 1 || zh < 1) return;
-          const m = horiz
-            ? boxMesh(a2 - a1, zh, t, tx((a1 + a2) / 2), ty(zb) + zh / 2, tz(seg.y1), mat)
-            : boxMesh(t, zh, a2 - a1, tx(seg.x1), ty(zb) + zh / 2, tz((a1 + a2) / 2), mat);
-          group.add(m);
-        };
-        const s1 = horiz ? seg.x1 : seg.y1;
-        const s2 = horiz ? seg.x2 : seg.y2;
-        const inSeg = placedOpenings
-          .filter(({ placed }) => {
-            const g = placed.segment;
-            return (
-              g.horizontal === horiz &&
-              Math.abs(g.x1 - seg.x1) < 1 &&
-              Math.abs(g.y1 - seg.y1) < 1 &&
-              Math.abs(g.x2 - seg.x2) < 1 &&
-              Math.abs(g.y2 - seg.y2) < 1
-            );
-          })
-          .map(({ o, placed }) => {
-            const isDoor = o.kind === "door";
-            const oh = o.h ?? (isDoor ? 2000 : 1200);
-            const sill = isDoor
-              ? 0
-              : typeof o.attrs["sill"] === "number"
-                ? (o.attrs["sill"] as number)
-                : 800;
-            const c = horiz ? placed.cx : placed.cy;
-            return {
-              o,
-              placed,
-              isDoor,
-              oh,
-              sill,
-              lo: Math.max(s1, c - o.w / 2),
-              hi: Math.min(s2, c + o.w / 2),
-            };
-          })
-          .sort((a, b2) => a.lo - b2.lo);
-        if (inSeg.length === 0) {
-          piece(s1, s2, z0, h);
-          continue;
-        }
-        // 開口の間の全高の壁
-        let cur = s1;
-        for (const sp of inSeg) {
-          if (sp.lo > cur) piece(cur, sp.lo, z0, h);
-          cur = Math.max(cur, sp.hi);
-        }
-        piece(cur, s2, z0, h);
-        // 各開口の腰壁・垂れ壁と、開口そのもの (扉・ガラス)
-        for (const sp of inSeg) {
-          if (sp.sill > 0) piece(sp.lo, sp.hi, z0, sp.sill);
-          const top = sp.sill + sp.oh;
-          if (top < h) piece(sp.lo, sp.hi, z0 + top, h - top);
-          const thick = t + 60;
-          const { cx, cy } = sp.placed;
-          const m = horiz
-            ? boxMesh(sp.o.w, sp.oh, thick, tx(cx), ty(z0 + sp.sill) + sp.oh / 2, tz(cy), sp.isDoor ? doorMat : glassMat)
-            : boxMesh(thick, sp.oh, sp.o.w, tx(cx), ty(z0 + sp.sill) + sp.oh / 2, tz(cy), sp.isDoor ? doorMat : glassMat);
-          group.add(m);
-        }
+    const isGlass = opts.glass ?? (() => false);
+
+    // 壁 — **開口で割られた区間として立つ。**窓の裏に壁の箱が残ると、
+    // ガラスをいくら透かしても中は見えない。割るのは Form であり、ここではない
+    for (const b of form.boundaries) {
+      if (!b.material || levelHidden(b.level)) continue;
+      const mat = b.air ? railMat : isGlass(b) ? glassWallMat : wallMat;
+      for (const p of b.material.panels) {
+        const m = panelMesh(p, b.material.t, mat);
+        if (m) group.add(m);
+      }
+    }
+
+    // 建具 (扉・ガラス) — 開口の z 範囲も幅も Form が持つ。
+    // 窓台 (sill) を発明しない: 頭がまぐさ高に揃うことで下端は既に決まっている
+    if (opts.showOpenings) {
+      for (const o of form.openings) {
+        if (levelHidden(o.level)) continue;
+        const half = o.w / 2;
+        const len = Math.hypot(o.segment.x2 - o.segment.x1, o.segment.y2 - o.segment.y1) || 1;
+        const ux = ((o.segment.x2 - o.segment.x1) / len) * half;
+        const uy = ((o.segment.y2 - o.segment.y1) / len) * half;
+        const m = segBox(
+          { x1: o.cx - ux, y1: o.cy - uy, x2: o.cx + ux, y2: o.cy + uy },
+          o.z0,
+          o.z1,
+          o.t + JOINERY_T,
+          o.kind === "door" ? doorMat : glassMat,
+        );
+        if (m) group.add(m);
       }
     }
   }
@@ -430,9 +370,9 @@ export function buildScene(model: Model, opts: SceneOptions): BuiltScene {
   return { group, pickables };
 }
 
-/** 導出された領域 (凸片)。描かれた線 (koyu ADR-0022) で切られていれば斜めになる */
-function piecesOf(s: Space): Pt[][] {
-  return s.pieces.length > 0 ? s.pieces : s.rects.map(rectToPoly);
+/** 壁の一区間を立体へ。芯線に対して厚み t を両側へ振り分ける */
+function panelMesh(p: FormPanel, t: number, mat: THREE.Material): THREE.Mesh | null {
+  return segBox(p, p.z0, p.z1, t, mat);
 }
 
 /**

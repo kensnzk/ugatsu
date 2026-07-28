@@ -1,6 +1,6 @@
 # 範囲の規範 — ugatsu が描くもの、描かないもの
 
-ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き、何を描かないか」の規範である。**
+ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描き、何を描かないか」の規範である。**
 
 規範の上流は koyu にある。三領域と凍る面は [koyu spec/scope.md](https://github.com/kensnzk/koyu/blob/main/spec/scope.md)、目的と範囲は [koyu docs/policy.md](https://github.com/kensnzk/koyu/blob/main/docs/policy.md) が持つ。ここと上流が食い違ったら**上流が正である**。
 
@@ -16,8 +16,8 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 
 | 面 | 約束の内容 | 状態 |
 |---|---|---|
-| **入力** | muro 1.0 と機械形式 1.0 を読む | 🔨 muro 0.5 を読む。機械形式は書き出しのみ (読み込みは未実装) |
-| **導出の一致** | 参照実装と同じ形を作る。見た目の質はここに足すが、形は変えない | 🔨 koyu の `derive(model): Form` が未着手のため、**検査しようがない** ([§7](#7-koyu-100-への追随)) |
+| **入力** | muro 1.0 と機械形式 1.0 を読む | 🔨 muro 1.0 を読む。機械形式は書き出しのみ (読み込みは未実装) |
+| **導出の一致** | 参照実装と同じ形を作る。見た目の質はここに足すが、形は変えない | ✅ **形は `derive(model): Form` からしか来ない** ([ADR-0007](decisions/0007-draw-the-form.md))。`test/form.test.ts` が五つを縛る — 形の出所が一つ・立体が Form と座標まで一致・平面が Form を取りこぼさない・上部吹抜けの投影 11 件・決まらなければ作らない |
 | **配布の形** | 単一の HTML であり、それがそのまま公開されるものである | ✅ `npm run build` が `dist/index.html` 一枚を吐く |
 | **範囲の明示** | 何を描き、何を描かないかが文書にある | ✅ この文書 |
 
@@ -29,48 +29,57 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 
 六つの面がある。**どれも書かれたものからの生成物であって、描く操作はどこにも無い。**
 
-### 2.1 平面 (2D) — `src/components/PlanView.tsx`
+そして**形はどの面でも一つの入口から来る** — `formOf(model)` (= koyu の `derive(model): Form`) である ([ADR-0007](decisions/0007-draw-the-form.md))。座標も厚みも z 範囲も向きも、`Form` に既に入っている。ugatsu が足すのは色・線幅・線種・記号・注記の言葉・紙面の余白だけで、それらは `Form` に一つも無い ([koyu spec/derivation.md](https://github.com/kensnzk/koyu/blob/main/spec/derivation.md) §7)。
 
-レベルを一枚選び、そのレベルに領域を持つ空間を切った姿。
+### 2.1 平面 (2D) — `src/lib/planFigure.ts` + `src/components/PlanView.tsx`
+
+レベルを一枚選び、そのレベルを切った姿。**平面は純粋な断面ではない** — 扉の軌跡も、上部吹抜けの投影も、切断線も、下りる走りも、立体をどれだけ正確に切っても出てこない。だから `Form` は平面を**分類つきの2Dエンティティ集合** (`cut` / `below` / `above` / `swing` / `anchor`) として渡す。
+
+`planFigure(form, level)` がそれを「印」へ写し、`PlanView` が印を SVG へ描く。
 
 | 出るもの | 出所 |
 |---|---|
-| 空間の面 (導出された凸片。描かれた線で切られていれば斜めになる) | `s.pieces` / `s.rects` |
-| 吹抜けの対角破線 | `type:void` |
-| 半屋外の淡い塗り | `isSemiOutdoor` (導出) |
-| 壁の黒帯 (斜め壁を含む) | `segmentsFor` |
-| 開放的な分節の破線 | `boundary type:open` |
-| 手すり・柵の細実線 | `air:1` |
-| 開口の欠き取り・扉の吊元と軌跡・引き戸の戸袋・窓の芯線 | `placeOpening` |
-| 数えない分節 (`seg`) の帯と `spec` の注記 | `placeBand` |
-| 数えない分節 (`area`) の破線枠と名前 | `s.areas` |
-| 柱 | `columnsFor` |
-| 縦動線 (段・蹴込線・切断線・上下の矢印・注記) | `runDrawsForLevel` |
-| 敷地境界線 (一点二点鎖線)。**最下階のみ** | `model.polygons` |
-| 通り芯と符号の丸 (既定は非表示。トグルで出す) | `model.grid` |
-| 空間の名前・型・面積・パス | `displayName` / `areaM2` |
+| 空間の面 (導出された凸片。描かれた線で切られていれば斜めになる) | `class:cut` / `of:space` |
+| 吹抜けの対角破線 | `FormSpace.type` が `void` |
+| 半屋外の淡い塗り | `FormSpace.semiOutdoor` |
+| 壁の黒帯 (斜め壁を含む) | `class:cut` / `of:boundary` — **開口で割られた区間**が来る |
+| 開放的な分節の破線 | `of:boundary` で材を持たないもの |
+| 手すり・柵の細実線 | `FormBoundary.air` |
+| 扉の葉と軌跡・引き戸の戸袋・窓の芯線 | `class:swing` と `of:opening` |
+| 数えない分節 (`seg`) の帯 | `Form.segs` (`spec` の注記だけモデルから) |
+| 数えない分節 (`area`) の破線枠と名前 | `s.areas` (**書かれた与件**であって導出ではない) |
+| 柱 | `of:column` |
+| 縦動線 (段・蹴込線・切断線・上下の矢印・注記) | `of:run` (役は `outline` / `tread` / `break` / `arrow` / `anchor`) |
+| **上部吹抜けの投影** (破線と「上部吹抜け」の注記) | `class:above` / `of:space` |
+| 敷地境界線 (一点二点鎖線)。**最下階のみ** | `Form.site` |
+| 通り芯と符号の丸 (既定は非表示。トグルで出す) | `model.grid` (**書かれた与件**) |
+| 空間の名前・型・面積・パス | `displayName` / `FormSpace.areaM2` |
+
+**欠き取り (壁の黒帯を紙の色で塗り潰して穴に見せる手) は無い。**壁は最初から開口で割られた区間の列であり、切断面が切ったものだけが黒帯になる。腰壁 (`class:below`) と垂れ壁 (`class:above`) は描かない — **これが省く判断のすべてである**。
 
 パン・ズーム・空間の選択ができる。**色は用途 / 型 / レベルの三つの軸から選ぶ** (`src/lib/colors.ts`)。
 
 ### 2.2 立体 (3D) — `src/three/buildScene.ts`
 
+**モデルを受け取らない。**`Form` だけで立つ ([ADR-0007](decisions/0007-draw-the-form.md))。
+
 | 出るもの | 出所 |
 |---|---|
-| 空間の気積 (輪郭を天井高まで押し出す。半透明) | `heff` + `regionOf` |
-| 吹抜け (輪郭線だけの幽霊 — 実体を持たない気積) | `type:void` |
-| 半屋外 (気積ではなく薄い地面) | `isSemiOutdoor` |
-| 壁 (階高いっぱいに立つ。斜め壁は芯線に沿って回す) | `segmentsFor` |
-| 開口 (壁を欠き、腰壁と垂れ壁を残し、扉とガラスを置く) | `placeOpening` |
-| 柱 | `columnsFor` |
-| 縦動線 (段は箱、斜路は傾いた版) | `runSolids` |
-| 床・天井・屋根 | `slabs` |
-| 敷地の地盤面と境界線 | `model.polygons` |
+| 空間の気積 (半透明) | `FormSpace.z0` / `z1` — **決まらなければ立体を作らない** |
+| 吹抜け (輪郭線だけの幽霊 — 実体を持たない気積) | `FormSpace.type` が `void` |
+| 半屋外 (気積ではなく薄い地面) | `FormSpace.semiOutdoor` |
+| 壁 (斜め壁も芯線に沿って回る) | `FormBoundary.material.panels` |
+| 建具 (扉とガラス) | `Form.openings` の `z0`..`z1` |
+| 柱 | `Form.columns` の `z0`..`z1` |
+| 縦動線 (段は箱、斜路は傾いた版) | `FormRun.solids` |
+| 床・天井・屋根 | `Form.slabs` |
+| 敷地の地盤面と境界線 | `Form.site` |
 
-**壁は開口の周りに組む。**窓の裏に壁の箱が残るとガラスをいくら透かしても中は見えないので、開口の載る線分は先に割ってから壁を置く。
+**壁は開口の周りに組む** — が、割るのは ugatsu ではない。`Form` の壁が最初から区間の列である。窓の裏に壁の箱が残ることは、もう起こりようがない。
 
 ### 2.3 積層 (2.5D) — 同上 (`stackMode`)
 
-各レベルの床プレートを重ね、展開係数で持ち上げる。**吹抜けはプレートを置かないことで表す** — 床の不在がそのまま穴になる。プレートの上に壁線・開放の破線・柵の線を引き、レベル名の札を立てる。レベルごとの表示/非表示ができる。
+各レベルの床プレートを `FormSpace.outline` から重ね、展開係数で持ち上げる。**吹抜けはプレートを置かないことで表す** — 床の不在がそのまま穴になる。プレートの上に壁線・開放の破線・柵の線を `FormBoundary.segment` から引き、レベル名の札を立てる。レベルごとの表示/非表示ができる。
 
 ### 2.4 面積表 — `src/lib/stats.ts` / `src/components/AreaTable.tsx`
 
@@ -102,15 +111,21 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 
 | 書けるもの | 状態 | 場所 |
 |---|---|---|
-| **上部吹抜けの投影** (`boundary type:void`) — 下階の平面に上階の吹抜けを破線で落とす作図慣習 | **描かない。**平面は `wall` と `open` 以外の境界を捨てる (`PlanView.tsx:330`)。koyu の `svgPlan` は描く | complex 4・twin 4・tower 1・house 1・office 1 |
 | **垂直の境界** (`boundary type:stair` / `type:shaft`) | **描かない。**通行可能性としてグラフには効くが、図にはどの面にも現れない | 全例 |
-| **斜め線分の上の開口** | **形が合わない。**平面の `bandRect` と `doorSwing` に `seg.diagonal` の枝が無く、軸に沿った形で描かれる (koyu の `plan.ts` にはある)。3D の壁割りも斜め線分では開口を抜かない | 斜め線分 complex 10・twin 39。**そこに書かれた開口は現時点で 0 件**なので、まだ観測されていない |
 | **採光** (`daylight:1`) | **描かない。**床面積も有効窓面積も判定も、どの面にも出ない | complex 78室・twin 134室・tower 66室 |
 | **道路** (`road:` 幅員) | 数としてインスペクタの敷地表に出る。**平面図に道路として描かない** | house・tower・complex・twin |
 | **床材の分節** (`area` の `floor`) | 破線枠と文字は出る。**描き分けはしない** | — |
 | **境界の自由語** (`spec` / `fire` / `sound`) | 3D は `spec` に「ガラス / カーテンウォール / サッシ / glass」を含む語だけを透過に写す。平面は `seg` の `spec` を文字で注記する。**それ以外は無視する** ([§5.2](#52-ugatsu-だけが持つ既定)) | — |
+| **腰壁と垂れ壁** (開口の下・上に残る壁) | 立体には立つ。**平面には出さない** — 切断面が切ったものだけを黒帯にする作図慣習 | 全例 |
 | **永続同一性** (`uid`) | 属性表に文字として出るだけ。**uid による照合も外部joinもしない** | — |
 | **版と版の差分** (`semanticDiff`) | koyu が持つが ugatsu は呼ばない | — |
+
+**かつてここに二行あった。**どちらも「形を自分で組み立てていた」ことの帰結であり、`Form` を描くだけにしたときに**直したのではなく消えた** ([ADR-0007](decisions/0007-draw-the-form.md))。
+
+| かつて描かなかったもの | いま |
+|---|---|
+| **上部吹抜けの投影** (`boundary type:void`) — 下階の平面に上階の吹抜けを破線で落とす作図慣習。平面が `wall` と `open` 以外の境界を捨てていた | **描く。**同梱例の 11 件 (complex 4・twin 4・tower 1・house 1・office 1) がすべて出る。`test/form.test.ts` が件数を縛る |
+| **斜め線分の上の開口** — 平面の帯と扉の軌跡に `seg.diagonal` の枝が無く、3D の壁割りも斜めでは開口を抜かなかった | **形になる。**壁は芯線に沿って割れ、軌跡は法線から決まる。斜めの線分は complex 10・twin 39 あるが**そこに書かれた開口はまだ 0 件**なので、テストが最小の例を立てて縛る |
 
 ### 3.2 そもそも ugatsu が持たない図
 
@@ -178,32 +193,24 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 
 **これは危険な層である。**仮定した数で描いた図と、書かれた数で描いた図が、画面の上では区別できない。**だから表にして見えるようにする。**
 
-### 5.1 koyu の台帳と同じ既定
+### 5.1 導出の定数は koyu が持つ。ugatsu は写しさえ持たない
 
-台帳 ([koyu spec/vocabulary.md](https://github.com/kensnzk/koyu/blob/main/spec/vocabulary.md)) が既定値を定めているもの。ugatsu はそれを写しているだけで、**独自の仮定ではない**。
+壁厚の既定 100mm も、手すりの天端高 1100mm も、開口のまぐさ高 2000mm も、階高の決め方も、**台帳の既定ではない**。台帳 ([koyu spec/vocabulary.md](https://github.com/kensnzk/koyu/blob/main/spec/vocabulary.md)) が定めるのは「何を書いてよいか」であり、これらが定めるのは「**書かれなかったときに何を導くか**」である。両者は別の台帳を持つ — 規範は [koyu spec/derivation.md](https://github.com/kensnzk/koyu/blob/main/spec/derivation.md) §5 の 17 件の表で、実装の出所は `DERIVATION_CONSTANTS` である。
 
-| 対象 | 既定 | 場所 |
-|---|---|---|
-| 壁厚 `t` | **100mm** (芯振り分け) | `PlanView.tsx:40` / `buildScene.ts:328` |
-| 手すり・柵の天端高 (`air:1` の `h`) | **1100mm** | `buildScene.ts:326` |
-| 空間の天井高 | 空間の `h` → レベルの `h` (`heff`) | `buildScene.ts:59` |
-| 扉の開き勝手 | 吊元は始端側、開く側は `a` (領域を持つ方) | `PlanView.tsx:619-645` |
-| 開口の位置 `at` | 線分の中央 (比率 0.5) | koyu の `placeOpening` |
+**ugatsu はこの表の写しを一つも持たない。**書かれていようといまいと、値は `Form` に入って届く。かつては壁厚 100mm が `PlanView.tsx` と `buildScene.ts` の**二箇所に別々のリテラル**として在り (koyu 側と合わせて四箇所)、開口の高さ (扉 2000 / 窓 1200) と窓台 800mm は**ugatsu の発明**だった ([ADR-0007](decisions/0007-draw-the-form.md))。
+
+**決まらなければ形は来ない。**天井高が決まらない空間には `Form` が z を持たず、階高が決まらないレベルには壁も柱も立たない。かつてここには `DEFAULT_H = 2400` があり、koyu が `SUF01` (error) で「形を作れない」と言っている場面で ugatsu は 2400mm で描いていた — **check が赤いのに立体は完成して見えた**。いまは空く。
 
 ### 5.2 ugatsu だけが持つ既定
 
-**台帳に無い。ugatsu が図を描くために置いた数である。**書かれていない値をこの数で埋めている。
+**形ではない。**どれも「どう見せるか」であり、`Form` に対応物を持たない。
 
-| 対象 | ugatsu の既定 | なぜ危険か | 場所 |
+| 対象 | ugatsu の既定 | 何をしているか | 場所 |
 |---|---|---|---|
-| **空間の押し出し高さ** | **2400mm** — `heff` が決まらないとき | **koyu は決まらなければ形を作らない** (`SUF01` は error)。ugatsu は 2400 で描いてしまうので、**check が赤いのに立体は完成して見える** | `buildScene.ts:44,59` |
-| **階高** | 上のレベルまでの差。最上階は天井高で近似。それも無ければ 2400mm | 同上 | `buildScene.ts:63-71,193` |
-| 扉の高さ | **2000mm** — `h` が書かれていないとき | 台帳は開口の `h` に既定を持たない。**この数は ugatsu の発明である** | `buildScene.ts:383` |
-| 窓の高さ | **1200mm** — 同上 | 同上 | `buildScene.ts:383` |
-| 窓台 (腰高) | **800mm** — `sill` が書かれていないとき | `sill` は**台帳の自由語であって koyu は解釈しない**。ugatsu だけが読み、既定まで置いている | `buildScene.ts:384-388` |
-| 手すり・柵の厚み | `min(t, 80)mm` / `t` が無ければ 60mm | koyu の `svgAxo` と同じ値だが、台帳の規範ではない | `buildScene.ts:328` |
-| 半屋外の地面の厚み | **150mm** | 気積ではなく地面として描くための表現。原本に対応物は無い | `buildScene.ts:165` |
-| ガラスの外皮 | `spec` に「ガラス / カーテンウォール / サッシ / glass」を含めば透過 | **`spec` は自由語である。**語の意味を ugatsu が決めており、これは意味を作ることに最も近い | `buildScene.ts:312-313` |
+| ガラスの外皮 | `spec` に「ガラス / カーテンウォール / サッシ / glass」を含めば透過 | **`spec` は自由語である** (koyu ADR-0020)。語の意味を ugatsu が決めており、**これは意味を作ることに最も近い**。だから形の外へ出し、述語 `glassSpec(model)` として渡す | `buildScene.ts` の `glassSpec` |
+| 半屋外の地面の厚み | **150mm** | 半屋外を気積ではなく地面として描くための表現 | `buildScene.ts` の `GROUND_T` |
+| 2.5D の床プレート厚 | **120mm** | 積層は実寸の図ではない | `buildScene.ts` の `PLATE_T` |
+| 建具の見付け厚 | 壁厚 + **60mm** | 壁面から少し出して見えるようにする | `buildScene.ts` の `JOINERY_T` |
 
 ### 5.3 図の体裁のための定数
 
@@ -211,14 +218,12 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 
 | 対象 | 値 | 場所 |
 |---|---|---|
-| 平面の余白 | 1680mm | `PlanView.tsx:39` |
-| 開口の欠き取りの深さ | 壁厚 + 40mm (koyu の `svgPlan` は +30mm) | `PlanView.tsx:400` |
-| 柵の扉の欠き取り幅 | 120mm | `PlanView.tsx:352` |
-| 引き戸の戸袋の控え | 110mm | `PlanView.tsx:651` |
-| 面積・パスの注記を省く室の大きさ | 6㎡未満 | `PlanView.tsx:206` |
-| 2.5D の床プレート厚 | 120mm | `buildScene.ts:45` |
-| 扉・ガラスの見付け厚 | 壁厚 + 60mm | `buildScene.ts:417` |
-| 敷地の地盤面 / 境界線の高さ | -30mm / +25mm | `buildScene.ts:238,241` |
+| 平面の余白 | 1680mm | `PlanView.tsx` の `M` |
+| 引き戸の戸袋の控え | 110mm | `planFigure.ts` の `SLIDE_OFFSET` |
+| 切断線を二本の斜線にする振り分け | 走り幅の 1/4 (上限 300mm) / 220mm | `PlanView.tsx` (`run-break`) |
+| 面積・パスの注記を省く室の大きさ | 6㎡未満 | `PlanView.tsx` |
+| 敷地の地盤面 / 境界線の高さ | -30mm / +25mm | `buildScene.ts` |
+| 注記の言葉 (`UP` / `DN` / 「上部吹抜け」/ 段数と勾配) | — | `planFigure.ts` (**`Form` は言葉を持たない**) |
 
 ---
 
@@ -229,8 +234,10 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 | 版 | いま | 出所 |
 |---|---|---|
 | **ugatsu** | 0.4.0 | `package.json` (ビルド時に焼き込む) |
-| **koyu** | 0.15.0 | 実際に解決された `@kensnzk/koyu` の `package.json` — 範囲指定ではなく実体 |
-| **muro** | 0.5 | koyu が実行時に名乗る `DEFAULT_LANGUAGE_VERSION` |
+| **koyu** | 1.0.0-rc.1 | 実際に解決された `@kensnzk/koyu` の `package.json` — 範囲指定ではなく実体 |
+| **muro** | 1.0 | koyu が実行時に名乗る `DEFAULT_LANGUAGE_VERSION` |
+
+**`package.json` の範囲指定 (`^0.15.0`) は、いま嘘である。**ugatsu は `derive` を要求するので 0.15.0 では動かないが、koyu 1.0.0-rc.1 はまだレジストリに無い (公開済みは 0.15.0 まで)。開発は `npm run koyu:local` ([ADR-0005](decisions/0005-local-koyu-pipeline.md)) がローカルのツリーを見ており、**公開されたら `package.json` と lockfile を同じ変更で上げる**。範囲ではなく実体を焼き込む設計は、まさにこのためにある — 画面と配布HTMLが名乗る版は、いつでも本当に動いている版である。
 
 配布HTML は三つを `<meta name="ugatsu:version">` / `<meta name="koyu:version">` / `<meta name="muro:version">` に持ち、画面はツールバー左端 (hover で三本すべて) とインスペクタの概要に出す。**どの版の形を見ているかを利用者が言えない状態で凍結はできない。**
 
@@ -242,15 +249,16 @@ ugatsu 0.4.0 / koyu 0.15.0 / muro 0.5 現在。**この文書が「何を描き�
 
 ## 7. koyu 1.0.0 への追随
 
-koyu は 1.0.0-rc.1 へ向けて領域を分けた (`src/core/` `src/validate/` `src/draw/`)。ugatsu が使っている公開面に**破壊的な変更は無い** — 使っている 37 の名前 (値 28・型 9) はすべて koyu の HEAD に在る。したがって追随は**次の版でよい**。ただし、追随が要る箇所はここに列挙しておく。
+koyu は 1.0.0-rc.1 で領域を分け (`src/core/` `src/validate/` `src/draw/`)、形の参照実装 `derive(model): Form` を立て、機械が読む面を英語へ揃えた。ugatsu が使う公開面は 31 の名前 (値 19・型 12) で、**追随は済んだ二つと、残る四つに分かれる**。
 
-| 追随 | 内容 |
+| 追随 | 状態 |
 |---|---|
-| **`derive(model): Form` を呼ぶ** | いま `PlanView` と `buildScene` は `segmentsFor` `placeOpening` `placeBand` `columnsFor` `slabs` `runSolids` `runDrawsForLevel` を**個別に呼んで自分で形を組み立てている**。koyu の `src/draw/plan.ts` も同じ部品を別々に呼んでおり、**同じ部品から違う形が出る余地が構造的に残っている** (現に上部吹抜けと斜め線分の開口で違う形が出ている — [§3.1](#31-muro-に書けるのに-ugatsu-が描かないもの))。koyu が `Form` を一つの入口から返すようになったら、ugatsu はそれを描くだけにする。**これが立つまで凍結面「導出の一致」は検査しようがない** |
-| **`checkDiagnostics` へ移る** | いま `store.ts` は `check(model)` が返した**文字列**を受け、`EditorPane.tsx:57` の正規表現 `/^(?:([^\s:]+):)?(\d+)行目/` で出所を復元している。構造化診断 `Diagnostic { code, severity, message, line, file, path, related }` が一次形式であり、**コードも `related` も正規表現では取れない**。移れば診断コードの表示と、重なりの相手への飛び先が同時に手に入る |
-| **`validate` を呼ぶ** | 建築的な判定 (`Finding { rule, level }`) は core の診断と**型からして別である**。判定を出すなら、それが判定であって `check` の保証ではないことが読み取れる形で出す ([§4](#4-何を判定しないか)) |
-| **`daylight` → `daylightInputs`** | 採光は「床面積と有効窓面積」を返す問いになり、1/7 の線引きは `validate` へ移った。ugatsu は `daylight` を呼んでいないので**壊れないが、採光を出すときはこの形になる** |
-| **機械形式の読み込み** | 正準JSONに形式そのものの版が付く。凍結面「入力」は muro と機械形式の両方を要求する |
+| **`derive(model): Form` を呼ぶ** | ✅ **済んだ** ([ADR-0007](decisions/0007-draw-the-form.md))。形は `src/lib/form.ts` の `formOf(model)` からしか来ない。`PlanView` も `buildScene` も koyu の形の部品を**取り込まない** — `test/form.test.ts` が import で縛る。凍結面「導出の一致」はこれで検査できる |
+| **`checkDiagnostics` へ移る** | ✅ **済んだ。**`store.ts` は `Diagnostic { code, severity, message, line, file, path, related }` を持ち、エディタは診断コードを出して出所へ飛ぶ。かつては `check` が返した文字列を正規表現で解いており、koyu が機械向け出力を英語へ揃えた時点で**黙って壊れた**。`related` (重なりの相手) はまだ画面に出していない |
+| **`validate` を呼ぶ** | 🔨 建築的な判定 (`Finding { rule, level }`) は core の診断と**型からして別である**。判定を出すなら、それが判定であって `check` の保証ではないことが読み取れる形で出す ([§4](#4-何を判定しないか)) |
+| **`daylight` → `daylightInputs`** | 🔨 採光は「床面積と有効窓面積」を返す問いになり、1/7 の線引きは `validate` へ移った。ugatsu は呼んでいないので**壊れないが、採光を出すときはこの形になる** |
+| **機械形式の読み込み** | 🔨 正準JSONに形式そのものの版が付く。凍結面「入力」は muro と機械形式の両方を要求する |
+| **レジストリの koyu を 1.0.0-rc.1 へ** | 🔨 公開されたら `package.json` と lockfile を上げる ([§6](#6-読める版)) |
 
 ---
 
