@@ -6,7 +6,7 @@
 //
 // 座標はmm・y反転のみ (scale=1)。壁は境界から導出される — 壁を描く操作はここにも無い。
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { displayName, polyBounds, polygonAreaM2, type Pt } from "@kensnzk/koyu";
+import { canonicalBoundaryOrder, displayName, polyBounds, polygonAreaM2, type Pt } from "@kensnzk/koyu";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Radio } from "../lib/ds.js";
 import { formOf } from "../lib/form.js";
@@ -334,7 +334,7 @@ export function PlanView() {
   // seg の仕様は書かれた自由語 — 帯の位置は Form が、言葉はモデルが持つ
   for (const [i, g] of form.segs.entries()) {
     if (g.level !== planLevel) continue;
-    const spec = model.boundaries[g.boundary]?.segs[g.index]?.attrs["spec"];
+    const spec = canonicalBoundaryOrder(model)[g.boundary]?.segs[g.index]?.attrs["spec"];
     if (typeof spec !== "string") continue;
     const h = g.segment.horizontal;
     wallMarks.push(

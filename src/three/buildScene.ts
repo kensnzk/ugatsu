@@ -11,6 +11,7 @@
 // 3Dモード: `Form` の気積・壁の区間・開口・柱・縦動線・面をそのまま立体へ写す。
 // 2.5Dモード: 各レベルの床プレートを重ね、展開係数で持ち上げる (吹抜けは床の不在=穴)。
 import * as THREE from "three";
+import { canonicalBoundaryOrder } from "@kensnzk/koyu";
 import type {
   Form,
   FormBoundary,
@@ -73,7 +74,7 @@ export interface BuiltScene {
  */
 export function glassSpec(model: Model): (b: FormBoundary) => boolean {
   return (b) => {
-    const v = model.boundaries[b.boundary]?.attrs["spec"];
+    const v = canonicalBoundaryOrder(model)[b.boundary]?.attrs["spec"];
     return typeof v === "string" && /カーテンウォール|ガラス|サッシ|glass/i.test(v);
   };
 }
