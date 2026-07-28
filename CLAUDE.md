@@ -2,6 +2,17 @@
 
 koyu (.muro テキスト) の 2D/3D ビューア。React + Vite + Three.js + CodeMirror。
 
+## 形 (最初に読む)
+
+**ugatsu は形を組み立てない。**座標・厚み・z 範囲・向きは koyu の `derive(model): Form` が返し、ugatsu はそれを描くだけである ([ADR-0007](docs/decisions/0007-draw-the-form.md) / koyu [spec/derivation.md](https://github.com/kensnzk/koyu/blob/main/spec/derivation.md))。範囲の規範は [docs/scope.md](docs/scope.md)。
+
+- **形の入口は `src/lib/form.ts` の `formOf(model)` 一つ。**`derive` を呼ぶ頁を増やさない — 平面と立体が別の形を見た瞬間に凍結面「導出の一致」が壊れる
+- **描画の三頁** (`components/PlanView.tsx` / `three/buildScene.ts` / `lib/planFigure.ts`) **は koyu の形の部品を取り込まない** (`segmentsFor` `placeOpening` `slabs` `columnsFor` `runSolids` `runDrawsForLevel` `heff` …)。`test/form.test.ts` が import で縛る
+- **既定値を発明しない。**壁厚も開口の高さも階高も `Form` に入って届く。**決まらなければ描かない** — koyu が形を作らない場面で ugatsu も作らない
+- ugatsu が足してよいのは色・線幅・線種・記号・注記の言葉・紙面の余白だけ。それらは `Form` に一つも無い
+
+koyu をローカルのツリーへ向けるには `KOYU_REPO=/path/to/koyu npm run koyu:local` ([ADR-0005](docs/decisions/0005-local-koyu-pipeline.md))。
+
 ## デザインシステム (koyu-design-system)
 
 見た目は **@kensnzk/koyu-design-system** のトークンで表現する。基調は冷灰、選択 = 藍 (`--primary`)、注意・経路 = 朱 (`--accent`)、浮遊パネル、12pxが文字の下限。

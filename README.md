@@ -54,7 +54,11 @@ src/lib/         colour assignment, area statistics, exports
 examples/        copies of koyu's examples (refreshed by sync-examples)
 ```
 
-koyu is consumed as a package (`@kensnzk/koyu`) — the viewer holds no answers of its own; every derivation (wall segments, areas, routes, checks, daylight, site) is a call into koyu. Design decisions are recorded in [docs/decisions/](docs/decisions/).
+koyu is consumed as a package (`@kensnzk/koyu`) — the viewer holds no answers of its own; every derivation (wall segments, areas, routes, checks, site) is a call into koyu. Design decisions are recorded in [docs/decisions/](docs/decisions/).
+
+## Scope
+
+**koyu makes no coordinates. ugatsu makes no meaning.** What ugatsu draws, what it does not draw, what it never judges, and the default values it fills in for things you did not write, are all listed in **[docs/scope.md](docs/scope.md)** (Japanese). Read it before concluding that something is missing from the notation: **what cannot be drawn is not what cannot be written.**
 
 ## License
 

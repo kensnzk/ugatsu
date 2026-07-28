@@ -54,7 +54,11 @@ src/lib/         色割当・面積集計・書き出し
 examples/        koyu の実例のコピー (sync-examples で追随)
 ```
 
-koyu はパッケージ (`@kensnzk/koyu`) として消費する — ビューワーは自前の「答え」を持たず、導出 (壁線分・面積・経路・check・採光・敷地) はすべて koyu の関数呼び出しである。設計判断は [docs/decisions/](docs/decisions/) に記録。
+koyu はパッケージ (`@kensnzk/koyu`) として消費する — ビューワーは自前の「答え」を持たず、導出 (壁線分・面積・経路・check・敷地) はすべて koyu の関数呼び出しである。設計判断は [docs/decisions/](docs/decisions/) に記録。
+
+## 範囲
+
+**koyu は座標を作らない。ugatsu は意味を作らない。**何を描き、何を描かず、何を判定せず、書かれていない値をどんな数で埋めているかは **[docs/scope.md](docs/scope.md)** にある。記法に何かが足りないと結論する前に読むこと — **描けないことは、書けないことではない。**
 
 ## ライセンス
 

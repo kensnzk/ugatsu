@@ -1,35 +1,16 @@
-// 平面ビュー — core/plan.ts (svgPlan) と同じ作図規約のインタラクティブ版。
+// 平面ビュー — **`Form` を描くだけ**である。
+//
+// 形の規則はここに一つも無い (koyu ADR-0040)。壁の厚みも、開口で割られた区間も、扉の
+// 吊元と軌跡も、階段がどこで切れるかも、上部吹抜けの投影も、`formOf(model)` が返す `Form`
+// に既に入っている。ここが持つのは色・線幅・線種・文字寸・記号・余白 — すべて見た目である。
+//
 // 座標はmm・y反転のみ (scale=1)。壁は境界から導出される — 壁を描く操作はここにも無い。
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  areaM2,
-  columnsFor,
-  displayName,
-  isSemiOutdoor,
-  placeBand,
-  placeOpening,
-  polygonAreaM2,
-  polyBounds,
-  rectToPoly,
-  runDrawsForLevel,
-  segmentsFor,
-  type Boundary,
-  type Model,
-  type Opening,
-  type Pt,
-  type Segment,
-  type Space,
-} from "@kensnzk/koyu";
-
-/** 導出された領域 (凸片)。描かれた線 (koyu ADR-0022) で切られていれば斜めになる */
-const piecesOf = (s: Space): Pt[][] =>
-  s.pieces.length > 0 ? s.pieces : s.rects.map(rectToPoly);
-const bounds = polyBounds;
-const area = polygonAreaM2;
-const pathOf = (poly: Pt[], sx: (x: number) => number, sy: (y: number) => number): string =>
-  poly.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`).join(" ") + " Z";
+import { canonicalBoundaryOrder, displayName, polyBounds, polygonAreaM2, type Pt } from "@kensnzk/koyu";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Radio } from "../lib/ds.js";
+import { formOf } from "../lib/form.js";
+import { planFigure, type Mark, type MarkRole } from "../lib/planFigure.js";
 import { token } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Dropdown } from "./Dropdown.js";
@@ -37,7 +18,6 @@ import { Legend } from "./Legend.js";
 import { ToolIcon } from "./ui.js";
 
 const M = 1680; // 余白 mm
-const WALL_DEFAULT_T = 100;
 
 interface Extent {
   minX: number;
@@ -66,7 +46,7 @@ export function PlanView() {
 
   // structure=line / state=wash / space=blank を作図セマンティックから毎回導出する。
   const DRAWING = token("--drawing-line"); // 壁・建具
-  const PAPER = token("--bg-canvas"); // 図面の地 (開口の消し込みも同色)
+  const PAPER = token("--bg-canvas"); // 図面の地
   const GRID = token("--drawing-line-muted"); // 任意表示の通り芯
   const FAINT = token("--drawing-line-muted"); // 吹抜け・開放・分節
   const LABEL = token("--ink"); // 主ラベル
@@ -83,32 +63,51 @@ export function PlanView() {
   );
   const levels = useMemo(() => (model ? levelsWithRooms(model) : []), [model, modelKey]);
 
+  // **形はここで一度だけ導く。**立体ビューと同じ `Form` を見る (src/lib/form.ts)
+  const form = useMemo(() => (model ? formOf(model) : null), [model, modelKey]);
+
+  /** そのレベルに引く印。Form の 2Dエンティティを写しただけのもの */
+  const marks = useMemo(
+    () => (form && planLevel ? planFigure(form, planLevel) : []),
+    [form, planLevel],
+  );
+  const byRole = useMemo(() => {
+    const m = new Map<MarkRole, Mark[]>();
+    for (const k of marks) {
+      const bucket = m.get(k.role);
+      if (bucket) bucket.push(k);
+      else m.set(k.role, [k]);
+    }
+    return m;
+  }, [marks]);
+  const of = (role: MarkRole): Mark[] => byRole.get(role) ?? [];
+
   const rooms = useMemo(
-    () =>
-      model && planLevel
-        ? [...model.spaces.values()].filter((s) => s.rects.length > 0 && s.level === planLevel)
-        : [],
-    [model, modelKey, planLevel],
+    () => (form && planLevel ? form.spaces.filter((s) => s.level === planLevel) : []),
+    [form, planLevel],
   );
 
   // 敷地形状 (ADR-0011) は最下階の平面 (配置図兼用) に敷地境界線として描く
   const sitePolys = useMemo(() => {
-    if (!model || !planLevel) return [];
-    const lowest = Object.values(model.levels).sort((a, b) => a.z - b.z)[0]?.name;
-    return planLevel === lowest ? [...model.polygons.values()] : [];
-  }, [model, modelKey, planLevel]);
+    if (!form || !planLevel) return [];
+    return planLevel === form.levels[0]?.name ? form.site : [];
+  }, [form, planLevel]);
 
   const extent: Extent | null = useMemo(() => {
     if (rooms.length === 0) return null;
-    const rs = rooms.flatMap((s) => piecesOf(s).map(bounds));
-    const px = sitePolys.flatMap((p) => p.points.map((pt) => pt.x));
-    const py = sitePolys.flatMap((p) => p.points.map((pt) => pt.y));
-    const minX = Math.min(...rs.map((r) => r.x1), ...px);
-    const maxX = Math.max(...rs.map((r) => r.x2), ...px);
-    const minY = Math.min(...rs.map((r) => r.y1), ...py);
-    const maxY = Math.max(...rs.map((r) => r.y2), ...py);
+    // 上部吹抜けの投影は下階の輪郭の外へ出うるので、紙面の範囲に含める
+    const pts: Pt[] = [
+      ...rooms.flatMap((s) => s.outline.flat()),
+      ...marks.filter((k) => k.role === "void-above").flatMap((k) => k.polygon ?? []),
+      ...sitePolys.flatMap((p) => p.points),
+    ];
+    if (pts.length === 0) return null;
+    const minX = Math.min(...pts.map((p) => p.x));
+    const maxX = Math.max(...pts.map((p) => p.x));
+    const minY = Math.min(...pts.map((p) => p.y));
+    const maxY = Math.max(...pts.map((p) => p.y));
     return { minX, maxX, minY, maxY, W: maxX - minX + M * 2, H: maxY - minY + M * 2 };
-  }, [rooms, sitePolys]);
+  }, [rooms, marks, sitePolys]);
 
   // ズームのリセット (レベル・ファイル切替)
   useEffect(() => setVb(null), [planLevel, fitKey]);
@@ -134,7 +133,7 @@ export function PlanView() {
     return () => svg.removeEventListener("wheel", onWheel);
   }, [extent]);
 
-  if (!model || !planLevel || !extent || !colors) {
+  if (!model || !form || !planLevel || !extent || !colors) {
     return <div className="empty-view">レベルに領域を持つ空間がありません</div>;
   }
 
@@ -144,74 +143,97 @@ export function PlanView() {
   const onRoute = routePaths(route);
 
   const wasClick = () => !(drag.current?.moved ?? false);
+  const d2 = (poly: Pt[]): string =>
+    poly.map((p, i) => `${i === 0 ? "M" : "L"} ${sx(p.x)} ${sy(p.y)}`).join(" ") + " Z";
+  const lines = (k: Mark, key: string, stroke: string, w: number, dash?: string): ReactNode => (
+    <g key={key} stroke={stroke} strokeWidth={w} {...(dash ? { strokeDasharray: dash } : {})}>
+      {(k.lines ?? []).map((g, i) => (
+        <line key={i} x1={sx(g.x1)} y1={sy(g.y1)} x2={sx(g.x2)} y2={sy(g.y2)} />
+      ))}
+    </g>
+  );
 
-  // ---- 描画要素 ----
+  // ---- 空間の面 (Form の class:cut / of:space) ----
   const roomFills: ReactNode[] = [];
-  const roomLabels: ReactNode[] = [];
   const selectionMarks: ReactNode[] = []; // 壁より上の層に描く
-  for (const s of rooms) {
-    const isVoid = s.type === "void";
-    // 半屋外 (外部にopen/air境界で接する — 導出) は淡く、屋外であることが図から読めるように
-    const semi = !isVoid && isSemiOutdoor(model, s);
-    const isSel = s.path === selected;
-    const isRoute = onRoute.has(s.path);
-    const fill = isSel ? token("--selection-bg") : isVoid ? PAPER : colors.colorOf(s);
-    for (const [i, poly] of piecesOf(s).entries()) {
-      const r = bounds(poly);
-      roomFills.push(
-        <path
-          key={`${s.path}#${i}`}
-          d={pathOf(poly, sx, sy)}
-          fill={fill}
-          fillOpacity={isSel ? 1 : isVoid ? 1 : s.path === hovered ? (semi ? 0.4 : 0.62) : semi ? 0.18 : 0.42}
-          style={{ cursor: "pointer" }}
-          onPointerUp={() => {
-            if (wasClick()) select(s.path === selected ? null : s.path);
-          }}
-          onPointerEnter={() => hover(s.path)}
-          onPointerLeave={() => hover(null)}
-        />,
-      );
-      if (isVoid) {
-        roomFills.push(
-          <g key={`${s.path}#${i}v`} stroke={FAINT} strokeWidth={16} strokeDasharray="120 80" pointerEvents="none">
-            <line x1={sx(r.x1)} y1={sy(r.y1)} x2={sx(r.x2)} y2={sy(r.y2)} />
-            <line x1={sx(r.x1)} y1={sy(r.y2)} x2={sx(r.x2)} y2={sy(r.y1)} />
-          </g>,
-        );
-      }
-    }
-    // 選択・経路の輪郭 (合併の各矩形へ)
-    if (isSel || isRoute) {
-      for (const [i, poly] of piecesOf(s).entries()) {
-        selectionMarks.push(
-          <path
-            key={`${s.path}#${i}sel`}
-            d={pathOf(poly, sx, sy)}
-            fill="none"
-            stroke={isSel ? selectColor() : routeColor()}
-            strokeWidth={isSel ? 70 : 50}
-            pointerEvents="none"
-          />,
-        );
-      }
-    }
-    // ラベル (最大矩形の中心)
-    const r = bounds(
-      [...piecesOf(s)].sort((a, b) => area(b) - area(a))[0]!,
+  for (const [i, k] of of("space").entries()) {
+    const isSel = k.ref === selected;
+    roomFills.push(
+      <path
+        key={`sp${i}`}
+        d={d2(k.polygon!)}
+        fill={isSel ? token("--selection-bg") : colors.byPath(k.ref)}
+        fillOpacity={
+          isSel ? 1 : k.ref === hovered ? (k.faint ? 0.4 : 0.62) : k.faint ? 0.18 : 0.42
+        }
+        style={{ cursor: "pointer" }}
+        onPointerUp={() => {
+          if (wasClick()) select(k.ref === selected ? null : k.ref);
+        }}
+        onPointerEnter={() => hover(k.ref)}
+        onPointerLeave={() => hover(null)}
+      />,
     );
+  }
+  for (const [i, k] of of("space-void").entries()) {
+    roomFills.push(
+      <path
+        key={`vd${i}`}
+        d={d2(k.polygon!)}
+        fill={k.ref === selected ? token("--selection-bg") : PAPER}
+        style={{ cursor: "pointer" }}
+        onPointerUp={() => {
+          if (wasClick()) select(k.ref === selected ? null : k.ref);
+        }}
+        onPointerEnter={() => hover(k.ref)}
+        onPointerLeave={() => hover(null)}
+      />,
+    );
+  }
+  for (const [i, k] of of("void-hatch").entries()) {
+    roomFills.push(
+      <g key={`vh${i}`} pointerEvents="none">
+        {lines(k, `vh${i}l`, FAINT, 16, "120 80")}
+      </g>,
+    );
+  }
+  // 選択・経路の輪郭 (導出された凸片ごとに)
+  for (const [i, k] of marks.entries()) {
+    if (k.role !== "space" && k.role !== "space-void") continue;
+    const isSel = k.ref === selected;
+    if (!isSel && !onRoute.has(k.ref)) continue;
+    selectionMarks.push(
+      <path
+        key={`sel${i}`}
+        d={d2(k.polygon!)}
+        fill="none"
+        stroke={isSel ? selectColor() : routeColor()}
+        strokeWidth={isSel ? 70 : 50}
+        pointerEvents="none"
+      />,
+    );
+  }
+
+  // ---- 空間のラベル (最大の凸片の中心に置く — 紙面の判断) ----
+  const roomLabels: ReactNode[] = [];
+  for (const s of rooms) {
+    const space = model.spaces.get(s.path);
+    if (!space || s.outline.length === 0) continue;
+    const poly = [...s.outline].sort((a, b) => polygonAreaM2(b) - polygonAreaM2(a))[0]!;
+    const r = polyBounds(poly);
     const cx = sx((r.x1 + r.x2) / 2);
     const cy = sy((r.y1 + r.y2) / 2);
-    const a = areaM2(s);
     const small = (r.x2 - r.x1) * (r.y2 - r.y1) < 6e6; // 6㎡未満は控えめに
     roomLabels.push(
       <g key={s.path} pointerEvents="none" textAnchor="middle">
         <text x={cx} y={cy - 80} fontSize={280} fill={LABEL}>
-          {displayName(s)}
+          {displayName(space)}
         </text>
         {!small && (
           <text x={cx} y={cy + 260} fontSize={200} fill={SUBTLE}>
-            {s.type === "void" ? "吹抜け" : `${s.type}${semi ? " ・ 半屋外" : ""} ・ ${a?.toFixed(1)}㎡`}
+            {s.type === "void"
+              ? "吹抜け"
+              : `${s.type}${s.semiOutdoor ? " ・ 半屋外" : ""} ・ ${s.areaM2?.toFixed(1)}㎡`}
           </text>
         )}
         {!small && (
@@ -223,10 +245,11 @@ export function PlanView() {
     );
   }
 
-  // 数えない分節 (area)
+  // ---- 数えない分節 (area) — **書かれた与件**であって導出ではない ----
   const areaMarks: ReactNode[] = [];
   for (const s of rooms) {
-    for (const [i, a] of s.areas.entries()) {
+    const space = model.spaces.get(s.path);
+    for (const [i, a] of (space?.areas ?? []).entries()) {
       const r = a.rect;
       const label = [a.attrs["name"], a.attrs["floor"]]
         .filter((v): v is string => typeof v === "string")
@@ -254,24 +277,20 @@ export function PlanView() {
     }
   }
 
-  // 敷地境界線 (一点二点鎖線 — 作図慣習)
-  const siteMarks: ReactNode[] = [];
-  for (const [i, poly] of sitePolys.entries()) {
-    const d = poly.points.map((pt, k) => `${k === 0 ? "M" : "L"} ${sx(pt.x)} ${sy(pt.y)}`).join(" ");
-    siteMarks.push(
-      <path
-        key={`site${i}`}
-        d={`${d} Z`}
-        fill="none"
-        stroke={SUBTLE}
-        strokeWidth={22}
-        strokeDasharray="280 60 50 60 50 60"
-        pointerEvents="none"
-      />,
-    );
-  }
+  // ---- 敷地境界線 (一点二点鎖線 — 作図慣習) ----
+  const siteMarks: ReactNode[] = sitePolys.map((poly, i) => (
+    <path
+      key={`site${i}`}
+      d={d2(poly.points)}
+      fill="none"
+      stroke={SUBTLE}
+      strokeWidth={22}
+      strokeDasharray="280 60 50 60 50 60"
+      pointerEvents="none"
+    />
+  ));
 
-  // 通り芯
+  // ---- 通り芯 (書かれた与件) ----
   const gridMarks: ReactNode[] = [];
   for (const [i, x] of model.grid.X.coords.entries()) {
     if (x < extent.minX - 1 || x > extent.maxX + 1) continue;
@@ -300,176 +319,142 @@ export function PlanView() {
     );
   }
 
-  // 壁・開放分節・seg・開口 (境界から生成)
+  // ---- 壁・開放・手すり・seg ----
+  // **欠き取り (壁の黒帯を紙の色で塗り潰して穴に見せる手) は無い。**Form の壁は最初から
+  // 開口で割られた区間の列であり、切断面が切ったものだけがここへ来る
   const wallMarks: ReactNode[] = [];
-  const openingMarks: ReactNode[] = [];
-  const placedOpenings: Array<{ b: Boundary; o: Opening; seg: Segment; cx: number; cy: number }> = [];
-  // **鍵に b.line は使えない。**既定境界 (ADR-0014) は書かれていないので line を持たず、
-  // 全部が 0 になる — 導出された壁が二本以上ある階で React のキーが衝突する。
-  // 走査の順番 (bi) が境界の一意な名前である
-  for (const [bi, b] of model.boundaries.entries()) {
-    const onLevel = [b.a, b.b].some((p) => model.spaces.get(p)?.level === planLevel);
-    if (!onLevel) continue;
-    if (b.kind === "open") {
-      for (const [i, seg] of segmentsFor(model, b).entries()) {
-        wallMarks.push(
-          <line
-            key={`o${bi}#${i}`}
-            x1={sx(seg.x1)}
-            y1={sy(seg.y1)}
-            x2={sx(seg.x2)}
-            y2={sy(seg.y2)}
-            stroke={FAINT}
-            strokeWidth={20}
-            strokeDasharray="120 80"
-          />,
-        );
-      }
-      continue;
-    }
-    if (b.kind !== "wall") continue;
-    if (b.air) {
-      // 遮蔽しない物 (手すり・柵 = spec語彙): 細実線 — 黒帯と描き分ける (ADR-0007)
-      for (const [i, seg] of segmentsFor(model, b).entries()) {
-        wallMarks.push(
-          <line
-            key={`air${bi}#${i}`}
-            x1={sx(seg.x1)}
-            y1={sy(seg.y1)}
-            x2={sx(seg.x2)}
-            y2={sy(seg.y2)}
-            stroke={DRAWING}
-            strokeWidth={28}
-          />,
-        );
-      }
-      // 柵の扉 (門扉など): 線を切って軌跡を描く
-      for (const [i, o] of b.openings.entries()) {
-        if (o.kind !== "door") continue;
-        const placed = placeOpening(model, b, o);
-        if ("error" in placed) continue;
-        openingMarks.push(
-          <rect key={`aircut${bi}#${i}`} {...bandRect(placed.segment, o.w, placed.cx, placed.cy, 120, sx, sy)} fill={PAPER} />,
-          <g key={`airdoor${bi}#${i}`}>{doorSwing(model, b, o, placed.segment, placed.cx, placed.cy, sx, sy)}</g>,
-        );
-      }
-      continue;
-    }
-    const t = b.t ?? WALL_DEFAULT_T;
-    for (const [i, seg] of segmentsFor(model, b).entries()) {
-      if (seg.diagonal) {
-        // 描かれた線 (ADR-0022) の壁 — 芯線の法線方向へ t/2 ずつ振った四辺形
-        wallMarks.push(
-          <polygon key={`w${bi}#${i}`} points={diagWallPoints(seg, t, sx, sy)} fill={DRAWING} />,
-        );
-        continue;
-      }
-      wallMarks.push(
-        <rect key={`w${bi}#${i}`} {...wallRect(seg, t, sx, sy)} fill={DRAWING} />,
-      );
-    }
-    for (const [i, g] of b.segs.entries()) {
-      const placed = placeBand(model, b, g, "seg");
-      if ("error" in placed) continue;
-      wallMarks.push(
-        <rect key={`s${bi}#${i}`} {...bandRect(placed.segment, g.w, placed.cx, placed.cy, t, sx, sy)} fill={DERIVED} />,
-      );
-      const spec = g.attrs["spec"];
-      if (typeof spec === "string") {
-        const h = placed.segment.horizontal;
-        wallMarks.push(
-          <text
-            key={`sl${bi}#${i}`}
-            x={sx(placed.cx) + (h ? 0 : 160)}
-            y={sy(placed.cy) + (h ? -140 : 60)}
-            textAnchor={h ? "middle" : "start"}
-            fontSize={160}
-            fill={DERIVED}
-          >
-            {spec}
-          </text>,
-        );
-      }
-    }
-    for (const o of b.openings) {
-      const placed = placeOpening(model, b, o);
-      if (!("error" in placed)) placedOpenings.push({ b, o, seg: placed.segment, cx: placed.cx, cy: placed.cy });
-    }
+  for (const [i, k] of of("wall").entries()) {
+    wallMarks.push(<path key={`w${i}`} d={d2(k.polygon!)} fill={DRAWING} />);
   }
-  for (const [i, { b, o, seg, cx, cy }] of placedOpenings.entries()) {
-    const t = (b.t ?? WALL_DEFAULT_T) + 40;
-    openingMarks.push(
-      <rect key={`cut${i}`} {...bandRect(seg, o.w, cx, cy, t, sx, sy)} fill={PAPER} />,
+  for (const [i, k] of of("rail").entries()) wallMarks.push(lines(k, `air${i}`, DRAWING, 28));
+  for (const [i, k] of of("open").entries()) wallMarks.push(lines(k, `o${i}`, FAINT, 20, "120 80"));
+  for (const [i, k] of of("seg").entries()) {
+    wallMarks.push(<path key={`s${i}`} d={d2(k.polygon!)} fill={DERIVED} />);
+  }
+  // seg の仕様は書かれた自由語 — 帯の位置は Form が、言葉はモデルが持つ
+  for (const [i, g] of form.segs.entries()) {
+    if (g.level !== planLevel) continue;
+    const spec = canonicalBoundaryOrder(model)[g.boundary]?.segs[g.index]?.attrs["spec"];
+    if (typeof spec !== "string") continue;
+    const h = g.segment.horizontal;
+    wallMarks.push(
+      <text
+        key={`sl${i}`}
+        x={sx(g.cx) + (h ? 0 : 160)}
+        y={sy(g.cy) + (h ? -140 : 60)}
+        textAnchor={h ? "middle" : "start"}
+        fontSize={160}
+        fill={DERIVED}
+      >
+        {spec}
+      </text>,
     );
-    if (o.kind === "door") {
-      openingMarks.push(<g key={`door${i}`}>{doorSwing(model, b, o, seg, cx, cy, sx, sy)}</g>);
-    } else {
-      const half = o.w / 2;
-      openingMarks.push(
-        seg.horizontal ? (
-          <line key={`win${i}`} x1={sx(cx - half)} y1={sy(cy)} x2={sx(cx + half)} y2={sy(cy)} stroke={DRAWING} strokeWidth={20} />
-        ) : (
-          <line key={`win${i}`} x1={sx(cx)} y1={sy(cy - half)} x2={sx(cx)} y2={sy(cy + half)} stroke={DRAWING} strokeWidth={20} />
-        ),
-      );
-    }
   }
 
-  // ---- 柱 (koyu ADR-0023) — 位置は書かれず、通り芯の交点と床の交わりから現れる ----
-  const columnMarks: ReactNode[] = [];
-  for (const [i, c] of columnsFor(model, planLevel).entries()) {
-    columnMarks.push(
-      <rect
-        key={`col${i}`}
-        x={sx(c.x - c.w / 2)}
-        y={sy(c.y + c.d / 2)}
-        width={c.w}
-        height={c.d}
-        fill={DRAWING}
-        pointerEvents="none"
+  // ---- 開口 (窓の芯線・扉の葉と軌跡・引き戸の戸袋) ----
+  const openingMarks: ReactNode[] = [];
+  for (const [i, k] of of("window").entries()) openingMarks.push(lines(k, `win${i}`, DRAWING, 20));
+  for (const [i, k] of of("door-leaf").entries()) openingMarks.push(lines(k, `dl${i}`, DRAWING, 28));
+  for (const [i, k] of of("door-arc").entries()) {
+    const a = k.arc!;
+    // 掃引方向: 世界の反時計回りは、y を反転した紙の上では時計回りになる
+    openingMarks.push(
+      <path
+        key={`da${i}`}
+        d={`M ${sx(a.from.x)} ${sy(a.from.y)} A ${a.r} ${a.r} 0 0 ${a.ccw ? 0 : 1} ${sx(a.to.x)} ${sy(a.to.y)}`}
+        fill="none"
+        stroke={DRAWING}
+        strokeWidth={14}
+        strokeDasharray="60 50"
       />,
     );
   }
+  for (const [i, k] of of("slide-panel").entries()) openingMarks.push(lines(k, `sp${i}`, DRAWING, 40));
+  for (const [i, k] of of("slide-tail").entries()) openingMarks.push(lines(k, `st${i}`, DRAWING, 14));
 
-  // ---- 縦動線 (koyu ADR-0021) — そのレベルで切った姿 ----
-  // 上る走りは切断線で切れ、その先に下りる走りが見える。全ての判断は koyu 側が持つ
+  // ---- 柱 (位置はどこにも書かれない — 通り芯の交点と床の交わりから現れる) ----
+  const columnMarks: ReactNode[] = of("column").map((k, i) => (
+    <rect key={`col${i}`} {...rectOf(k.polygon!, sx, sy)} fill={DRAWING} pointerEvents="none" />
+  ));
+
+  // ---- 縦動線 — 上る走りは切断線で切れ、その先に下りる走りが見える ----
   const runMarks: ReactNode[] = [];
-  for (const [i, d] of runDrawsForLevel(model, planLevel).entries()) {
-    const line = (g: { x1: number; y1: number; x2: number; y2: number }, k: string, w: number) => (
-      <line key={k} x1={sx(g.x1)} y1={sy(g.y1)} x2={sx(g.x2)} y2={sy(g.y2)} strokeWidth={w} />
-    );
+  for (const [i, k] of of("run-outline").entries()) runMarks.push(lines(k, `ro${i}`, DRAWING, 24));
+  for (const [i, k] of of("run-tread").entries()) runMarks.push(lines(k, `rt${i}`, DRAWING, 14));
+  for (const [i, k] of of("run-break").entries()) {
+    // 切断線 — 作図慣習の平行な二本の斜線。Form が持つのは横切る位置だけである
+    for (const [j, g] of (k.lines ?? []).entries()) {
+      const dx = g.x2 - g.x1;
+      const dy = g.y2 - g.y1;
+      const w = Math.hypot(dx, dy) || 1;
+      const ux = dy / w;
+      const uy = -dx / w;
+      const s = Math.min(300, w / 4);
+      const off = Math.min(220, s);
+      const at = (p: number, q: number) => (
+        <line
+          key={`${p}`}
+          x1={sx(g.x1 + ux * p)}
+          y1={sy(g.y1 + uy * p)}
+          x2={sx(g.x2 + ux * q)}
+          y2={sy(g.y2 + uy * q)}
+          strokeWidth={32}
+        />
+      );
+      runMarks.push(
+        <g key={`rb${i}#${j}`} stroke={DRAWING}>
+          {at(-s - off, s - off)}
+          {at(-s + off, s + off)}
+        </g>,
+      );
+    }
+  }
+  for (const [i, k] of of("run-arrow").entries()) {
+    const g = k.lines?.[0];
+    if (!g) continue;
+    const dx = g.x2 - g.x1;
+    const dy = g.y2 - g.y1;
+    const len = Math.hypot(dx, dy) || 1;
+    const hx = (dx / len) * 420;
+    const hy = (dy / len) * 420;
+    const px = (-dy / len) * 200;
+    const py = (dx / len) * 200;
     runMarks.push(
-      <g key={`run${i}`} stroke={DRAWING} pointerEvents="none">
-        {d.outline.map((g, k) => line(g, `o${k}`, 24))}
-        {d.treads.map((g, k) => line(g, `t${k}`, 14))}
-        {d.breaks.map((g, k) => line(g, `b${k}`, 32))}
-        {d.arrows.map((a, k) => {
-          const dx = a.x2 - a.x1;
-          const dy = a.y2 - a.y1;
-          const len = Math.hypot(dx, dy) || 1;
-          const hx = (dx / len) * 420;
-          const hy = (dy / len) * 420;
-          const px = (-dy / len) * 200;
-          const py = (dx / len) * 200;
-          return (
-            <g key={`a${k}`}>
-              <line x1={sx(a.x1)} y1={sy(a.y1)} x2={sx(a.x2)} y2={sy(a.y2)} strokeWidth={20} />
-              <path
-                d={`M ${sx(a.x2)} ${sy(a.y2)} L ${sx(a.x2 - hx + px)} ${sy(a.y2 - hy + py)} L ${sx(a.x2 - hx - px)} ${sy(a.y2 - hy - py)} Z`}
-                fill={DRAWING}
-                stroke="none"
-              />
-              <text x={sx(a.x1) + 90} y={sy(a.y1) + 90} fontSize={220} fill={DRAWING} stroke="none">
-                {a.label}
-              </text>
-            </g>
-          );
-        })}
-        {d.notes.map((n, k) => (
-          <text key={`n${k}`} x={sx(n.x)} y={sy(n.y) + 700} fontSize={200} fill={FAINT} stroke="none" textAnchor="middle">
-            {n.text}
+      <g key={`ra${i}`} stroke={DRAWING} pointerEvents="none">
+        <line x1={sx(g.x1)} y1={sy(g.y1)} x2={sx(g.x2)} y2={sy(g.y2)} strokeWidth={20} />
+        <path
+          d={`M ${sx(g.x2)} ${sy(g.y2)} L ${sx(g.x2 - hx + px)} ${sy(g.y2 - hy + py)} L ${sx(g.x2 - hx - px)} ${sy(g.y2 - hy - py)} Z`}
+          fill={DRAWING}
+          stroke="none"
+        />
+        {k.at && (
+          <text x={sx(k.at.x) + 90} y={sy(k.at.y) + 90} fontSize={220} fill={DRAWING} stroke="none">
+            {k.text}
           </text>
-        ))}
+        )}
+      </g>,
+    );
+  }
+  for (const [i, k] of of("run-note").entries()) {
+    if (!k.at) continue;
+    runMarks.push(
+      <text key={`rn${i}`} x={sx(k.at.x)} y={sy(k.at.y) + 700} fontSize={200} fill={FAINT} textAnchor="middle" pointerEvents="none">
+        {k.text}
+      </text>,
+    );
+  }
+
+  // ---- 上部吹抜けの投影 — 切断面より上のものが下階の平面に落ちる (作図慣習) ----
+  const aboveMarks: ReactNode[] = [];
+  for (const [i, k] of of("void-above").entries()) {
+    aboveMarks.push(
+      <g key={`va${i}`} pointerEvents="none">
+        <path d={d2(k.polygon!)} fill="none" stroke={FAINT} strokeWidth={20} strokeDasharray="160 100" />
+        {k.at && (
+          <text x={sx(k.at.x)} y={sy(k.at.y) + 800} textAnchor="middle" fontSize={200} fill={FAINT}>
+            {k.text}
+          </text>
+        )}
       </g>,
     );
   }
@@ -541,6 +526,7 @@ export function PlanView() {
         <g pointerEvents="none">{runMarks}</g>
         <g pointerEvents="none">{wallMarks}</g>
         <g pointerEvents="none">{openingMarks}</g>
+        <g pointerEvents="none">{aboveMarks}</g>
         <g pointerEvents="none">{selectionMarks}</g>
         {roomLabels}
         <g pointerEvents="none">
@@ -557,128 +543,12 @@ export function PlanView() {
   );
 }
 
-function diagWallPoints(
-  seg: Segment,
-  t: number,
-  sx: (x: number) => number,
-  sy: (y: number) => number,
-): string {
-  const dx = seg.x2 - seg.x1;
-  const dy = seg.y2 - seg.y1;
-  const len = Math.hypot(dx, dy) || 1;
-  const nx = (-dy / len) * (t / 2);
-  const ny = (dx / len) * (t / 2);
-  const q: Array<[number, number]> = [
-    [seg.x1 + nx, seg.y1 + ny],
-    [seg.x2 + nx, seg.y2 + ny],
-    [seg.x2 - nx, seg.y2 - ny],
-    [seg.x1 - nx, seg.y1 - ny],
-  ];
-  return q.map(([x, y]) => `${sx(x)},${sy(y)}`).join(" ");
-}
-
-function wallRect(
-  seg: Segment,
-  t: number,
+/** 軸に沿った四辺形 (柱) を SVG の rect へ */
+function rectOf(
+  poly: Pt[],
   sx: (x: number) => number,
   sy: (y: number) => number,
 ): { x: number; y: number; width: number; height: number } {
-  if (seg.horizontal) {
-    return { x: sx(seg.x1), y: sy(seg.y1 + t / 2), width: seg.x2 - seg.x1, height: t };
-  }
-  return { x: sx(seg.x1 - t / 2), y: sy(seg.y2), width: t, height: seg.y2 - seg.y1 };
-}
-
-function bandRect(
-  seg: Segment,
-  w: number,
-  cx: number,
-  cy: number,
-  t: number,
-  sx: (x: number) => number,
-  sy: (y: number) => number,
-): { x: number; y: number; width: number; height: number } {
-  if (seg.horizontal) {
-    return { x: sx(cx - w / 2), y: sy(cy + t / 2), width: w, height: t };
-  }
-  return { x: sx(cx - t / 2), y: sy(cy + w / 2), width: t, height: w };
-}
-
-/** 扉の吊元と軌跡 (koyu plan.ts の doorSwing の移植 — hinge/swing 対応, ADR-0007) */
-function doorSwing(
-  model: Model,
-  b: Boundary,
-  o: Opening,
-  seg: Segment,
-  cx: number,
-  cy: number,
-  sx: (x: number) => number,
-  sy: (y: number) => number,
-): ReactNode {
-  const DRAWING = token("--drawing-line"); // 呼出時に読む (テーマ追従)
-  // 開く側の空間: swing:a/b の指定、既定はa側 (領域を持つ方)。合併なら扉に最も近い矩形へ開く
-  const sa = model.spaces.get(b.a);
-  const sb = model.spaces.get(b.b);
-  let into: typeof sa;
-  if (o.swing === "a") into = sa;
-  else if (o.swing === "b") into = sb;
-  else into = sa && sa.rects.length > 0 ? sa : sb;
-  if (!into || into.rects.length === 0) return null;
-  const dist = (rc: { x1: number; y1: number; x2: number; y2: number }) =>
-    ((rc.x1 + rc.x2) / 2 - cx) ** 2 + ((rc.y1 + rc.y2) / 2 - cy) ** 2;
-  const r = [...into.rects].sort((p, q) => dist(p) - dist(q))[0]!;
-  const c = { x: (r.x1 + r.x2) / 2, y: (r.y1 + r.y2) / 2 };
-
-  // 吊元 hinge (hinge:W/E/S/N — 既定は始端側)、軌跡は hinge を中心とする1/4円
-  let hinge: { x: number; y: number };
-  let along: { x: number; y: number };
-  let inward: { x: number; y: number };
-  if (seg.horizontal) {
-    const fromEast = o.hinge === "E";
-    hinge = { x: fromEast ? cx + o.w / 2 : cx - o.w / 2, y: cy };
-    along = { x: fromEast ? -1 : 1, y: 0 };
-    inward = { x: 0, y: c.y > cy ? 1 : -1 };
-  } else {
-    const fromNorth = o.hinge === "N";
-    hinge = { x: cx, y: fromNorth ? cy + o.w / 2 : cy - o.w / 2 };
-    along = { x: 0, y: fromNorth ? -1 : 1 };
-    inward = { x: c.x > cx ? 1 : -1, y: 0 };
-  }
-  // 引き戸・自動ドア (style:sliding / style:auto — 建具アセットの語彙, koyu ADR-0010):
-  // 開き軌跡ではなく、吊元側の控え (戸袋側) にパネルを描く — koyu plan.ts と同じ規約
-  const style = o.attrs["style"];
-  if (style === "sliding" || style === "auto") {
-    const off = 110; // 壁面からの控え mm
-    const s1 = {
-      x: hinge.x - along.x * o.w + inward.x * off,
-      y: hinge.y - along.y * o.w + inward.y * off,
-    };
-    const s2 = { x: hinge.x + inward.x * off, y: hinge.y + inward.y * off };
-    return (
-      <>
-        <line x1={sx(s1.x)} y1={sy(s1.y)} x2={sx(s2.x)} y2={sy(s2.y)} stroke={DRAWING} strokeWidth={40} />
-        <line x1={sx(s2.x)} y1={sy(s2.y)} x2={sx(hinge.x)} y2={sy(hinge.y)} stroke={DRAWING} strokeWidth={14} />
-      </>
-    );
-  }
-
-  const leafEnd = { x: hinge.x + inward.x * o.w, y: hinge.y + inward.y * o.w };
-  const gapEnd = { x: hinge.x + along.x * o.w, y: hinge.y + along.y * o.w };
-  const p1 = { x: sx(leafEnd.x), y: sy(leafEnd.y) };
-  const p2 = { x: sx(gapEnd.x), y: sy(gapEnd.y) };
-  const ph = { x: sx(hinge.x), y: sy(hinge.y) };
-  const crossZ = (p1.x - ph.x) * (p2.y - ph.y) - (p1.y - ph.y) * (p2.x - ph.x);
-  const sweep = crossZ > 0 ? 1 : 0;
-  return (
-    <>
-      <line x1={ph.x} y1={ph.y} x2={p1.x} y2={p1.y} stroke={DRAWING} strokeWidth={28} />
-      <path
-        d={`M ${p1.x} ${p1.y} A ${o.w} ${o.w} 0 0 ${sweep} ${p2.x} ${p2.y}`}
-        fill="none"
-        stroke={DRAWING}
-        strokeWidth={14}
-        strokeDasharray="60 50"
-      />
-    </>
-  );
+  const r = polyBounds(poly);
+  return { x: sx(r.x1), y: sy(r.y2), width: r.x2 - r.x1, height: r.y2 - r.y1 };
 }

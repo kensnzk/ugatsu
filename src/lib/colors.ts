@@ -60,6 +60,11 @@ export class ColorAssigner {
 export interface ModelColors {
   mode: ColorMode;
   colorOf(s: Space): string;
+  /**
+   * 空間のパスから色を引く。**形の側 (`Form`) はパスしか持たない** — 立体を組む側は
+   * `Space` を持たないので、色はここを通る (ADR-0007)
+   */
+  byPath(path: string): string;
   /** 凡例 (キー→色。実際にモデルに現れたものだけ) */
   legend: Array<[string, string]>;
 }
@@ -85,9 +90,15 @@ export function buildColors(model: Model, mode: ColorMode): ModelColors {
       legend.push([k, assigner.color(k)]);
     }
   }
+  const colorOf = (s: Space) => (s.type === "void" ? voidColor() : assigner.color(keyOf(s)));
+  const paths = new Map(spaces.map((s) => [s.path, s] as const));
   return {
     mode,
-    colorOf: (s: Space) => (s.type === "void" ? voidColor() : assigner.color(keyOf(s))),
+    colorOf,
+    byPath: (path: string) => {
+      const s = paths.get(path);
+      return s ? colorOf(s) : unsetColor();
+    },
     legend,
   };
 }

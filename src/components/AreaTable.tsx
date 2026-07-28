@@ -1,7 +1,7 @@
 // 面積表 — 「面積表に一行として現れてほしいか」が space のリトマス試験である以上、
 // この表は koyu の一次要素の一覧そのものになる (MUN-144)。
 import { useMemo } from "react";
-import { computeStats, statsToCsv } from "../lib/stats.js";
+import { AREA_CLASS_LABEL, computeStats, statsToCsv } from "../lib/stats.js";
 import { Button } from "../lib/ds.js";
 import { downloadText } from "../lib/download.js";
 import { routePaths, useViewer } from "../state/store.js";
@@ -44,6 +44,7 @@ export function AreaTable() {
             <th>型</th>
             <th>用途</th>
             <th className="num">面積</th>
+            <th>区分</th>
           </tr>
         </thead>
         <tbody>
@@ -51,9 +52,24 @@ export function AreaTable() {
             <LevelRows key={lb.level} lb={lb} selected={selected} onRoute={onRoute} select={select} />
           ))}
           <tr className="total-row">
-            <td colSpan={5}>合計 (吹抜け不算入)</td>
+            <td colSpan={5}>延べ面積 (屋内床面積)</td>
             <td className="num">{stats.total.toFixed(2)}</td>
+            <td />
           </tr>
+          {stats.outdoorTotal > 0 && (
+            <tr className="aside-row">
+              <td colSpan={5}>屋外 — 広場・空地等 (床面積に算入しない)</td>
+              <td className="num">{stats.outdoorTotal.toFixed(2)}</td>
+              <td />
+            </tr>
+          )}
+          {stats.semiTotal > 0 && (
+            <tr className="aside-row">
+              <td colSpan={5}>半屋外 — バルコニー・屋外階段等 (算入条件は法規細部のため別掲)</td>
+              <td className="num">{stats.semiTotal.toFixed(2)}</td>
+              <td />
+            </tr>
+          )}
         </tbody>
       </table>
 
@@ -157,7 +173,9 @@ function LevelRows({
       {lb.rows.map((r, i) => (
         <tr
           key={r.path}
-          className={`clickable ${r.path === selected ? "row-selected" : onRoute.has(r.path) ? "row-route" : ""}`}
+          className={`clickable ${r.cls === "indoor" ? "" : "row-aside"} ${
+            r.path === selected ? "row-selected" : onRoute.has(r.path) ? "row-route" : ""
+          }`}
           onClick={() => select(r.path === selected ? null : r.path)}
         >
           <td>{i === 0 ? lb.level : ""}</td>
@@ -165,12 +183,14 @@ function LevelRows({
           <td>{r.name}</td>
           <td>{r.type}</td>
           <td>{r.use ?? ""}</td>
-          <td className="num">{r.isVoid ? "吹抜け" : r.area?.toFixed(2)}</td>
+          <td className="num">{r.area?.toFixed(2) ?? "–"}</td>
+          <td className="muted">{AREA_CLASS_LABEL[r.cls]}</td>
         </tr>
       ))}
       <tr className="subtotal-row">
-        <td colSpan={5}>{lb.level} 小計</td>
+        <td colSpan={5}>{lb.level} 小計 (屋内)</td>
         <td className="num">{lb.subtotal.toFixed(2)}</td>
+        <td />
       </tr>
     </>
   );

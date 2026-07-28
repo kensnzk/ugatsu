@@ -1,4 +1,5 @@
 // インスペクタ — 選択した空間の属性。
+import { useMemo } from "react";
 import {
   areaM2,
   displayName,
@@ -7,14 +8,27 @@ import {
   isSemiOutdoor,
   siteReport,
 } from "@kensnzk/koyu";
-import { Icon } from "../lib/ds.js";
+import { Icon, Select } from "../lib/ds.js";
+import { KOYU_VERSION, MURO_VERSION, UGATSU_VERSION } from "../lib/versions.js";
 import { useViewer } from "../state/store.js";
+
+const NONE = "";
 
 export function Inspector() {
   const model = useViewer((s) => s.model);
+  const modelKey = useViewer((s) => s.modelKey);
   const selected = useViewer((s) => s.selected);
+  const routeTarget = useViewer((s) => s.routeTarget);
+  const route = useViewer((s) => s.route);
+  const setRouteTarget = useViewer((s) => s.setRouteTarget);
   const checkErrors = useViewer((s) => s.checkErrors);
   const checkWarnings = useViewer((s) => s.checkWarnings);
+
+  // 行き先の候補 — 母集団は書かれた空間そのもの。ugatsu が絞り込みの意味を作らない
+  const targets = useMemo(() => {
+    if (!model) return [];
+    return [...model.spaces.keys()].sort();
+  }, [model, modelKey]);
 
   const space = model && selected ? model.spaces.get(selected) : undefined;
 
@@ -42,6 +56,15 @@ export function Inspector() {
             <tr>
               <td>ゾーン</td>
               <td>{model.zones.size}</td>
+            </tr>
+            {/* 版 — 「どの版の形を見ているか」を利用者が言えるようにする (ADR-0006) */}
+            <tr>
+              <td>版</td>
+              <td className="version-cell">
+                ugatsu {UGATSU_VERSION}
+                <br />
+                koyu {KOYU_VERSION} ・ muro {MURO_VERSION}
+              </td>
             </tr>
             <tr>
               <td>check</td>
@@ -96,7 +119,11 @@ export function Inspector() {
           </>
         )}
         <p className="hint">
-          空間をクリックすると属性と隣接が出ます。壁は二空間の境界であり、平面も立体もこのテキストからの生成物です。
+          空間をクリックすると属性と動線が出ます。壁は二空間の境界であり、平面も立体もこのテキストからの生成物です。
+        </p>
+        <p className="hint">
+          描く範囲と、描かないものと、埋めている既定値は <code>docs/scope.md</code> にあります。
+          <strong>描けないことは、書けないことではありません。</strong>
         </p>
       </aside>
     );
@@ -160,6 +187,39 @@ export function Inspector() {
           ))}
         </tbody>
       </table>
+
+      {/*
+        動線 — 経路も扉の数も koyu の `doorsBetween` が答える。ugatsu は行き先を渡し、
+        返ってきた空間の列を塗るだけである。**通れるかどうかの判断はここに無い。**
+      */}
+      <h3>動線 — koyu への問い</h3>
+      <Select
+        fullWidth
+        size="sm"
+        label="行き先"
+        value={routeTarget ?? NONE}
+        options={[
+          { value: NONE, label: "—" },
+          ...targets.filter((p) => p !== space.path).map((p) => ({ value: p, label: p })),
+        ]}
+        onChange={(e: { target: { value: string } }) =>
+          setRouteTarget(e.target.value === NONE ? null : e.target.value)
+        }
+      />
+      {routeTarget && (
+        <p className="hint">
+          {route === "unreachable" || !route ? (
+            <>
+              到達できない — この二つの空間を結ぶ、通行できる境界の列がない。
+              <strong>接する空間の既定は壁であり、扉は書かなければ無い。</strong>
+            </>
+          ) : (
+            <>
+              扉 {route.doors} 枚 ・ 空間 {route.path.length} 室を経由 (最少の扉数)。平面・3D・面積表に同じ経路が出る。
+            </>
+          )}
+        </p>
+      )}
     </aside>
   );
 }

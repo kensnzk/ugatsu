@@ -5,9 +5,10 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { areaM2, displayName } from "@kensnzk/koyu";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Button, Checkbox, Slider, Switch } from "../lib/ds.js";
+import { formOf } from "../lib/form.js";
 import { tokenColor } from "../lib/theme.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
-import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
+import { buildScene, disposeGroup, glassSpec, type BuiltScene } from "../three/buildScene.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
 import { ToolIcon } from "./ui.js";
@@ -64,6 +65,8 @@ export function Scene3D() {
     [model, colorMode, modelKey],
   );
   const levels = useMemo(() => (model ? levelsWithRooms(model) : []), [model, modelKey]);
+  // **形はここで組み立てない。**平面ビューと同じ `Form` を見る (src/lib/form.ts)
+  const form = useMemo(() => (model ? formOf(model) : null), [model, modelKey]);
 
   // 初期化 (一度だけ)
   useEffect(() => {
@@ -217,23 +220,24 @@ export function Scene3D() {
       disposeGroup(world.built.group);
       world.built = null;
     }
-    if (!model || !colors) {
+    if (!model || !form || !colors) {
       world.invalidate();
       return;
     }
-    const built = buildScene(model, {
+    const built = buildScene(form, {
       colors,
       stackMode,
       spread,
       showWalls,
       showOpenings,
       hiddenLevels,
+      glass: glassSpec(model),
     });
     world.scene.add(built.group);
     world.built = built;
     applyHighlights();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [model, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels, theme, glRetry]);
+  }, [model, form, modelKey, colors, stackMode, spread, showWalls, showOpenings, hiddenLevels, theme, glRetry]);
 
   // カメラフィット (ファイル切替・モード切替のとき)
   useEffect(() => {
@@ -373,7 +377,7 @@ export function Scene3D() {
             <>
               <Checkbox label="壁" checked={showWalls} onChange={(b: boolean) => setShowWalls(b)} />
               <Checkbox
-                label="開口"
+                label="建具"
                 checked={showOpenings}
                 onChange={(b: boolean) => setShowOpenings(b)}
                 disabled={!showWalls}

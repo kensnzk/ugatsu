@@ -53,12 +53,6 @@ const theme = EditorView.theme({
   "&.cm-focused": { outline: "none" },
 });
 
-/** checkメッセージから出所 (ファイル:行) を読む — koyu srcRef の逆 */
-function parseRef(message: string): { file?: string; line: number } | null {
-  const m = /^(?:([^\s:]+):)?(\d+)行目/.exec(message);
-  if (!m) return null;
-  return { ...(m[1] ? { file: m[1] } : {}), line: Number(m[2]) };
-}
 
 export function EditorPane() {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -215,27 +209,25 @@ export function EditorPane() {
                 {checkWarnings.length > 0 && ` ・ 警告 ${checkWarnings.length}`}
               </span>
             </div>
-            {[
-              ...checkErrors.map((m) => ["cross-circled", m] as const),
-              ...checkWarnings.map((m) => ["exclamation-triangle", m] as const),
-            ].map(([icon, m], i) => {
-              const ref = parseRef(m);
-              return (
-                <div key={i} className="diag-item">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    fullWidth
-                    icon={icon}
-                    style={{ justifyContent: "flex-start", color: "inherit" }}
-                    disabled={!ref}
-                    onClick={() => ref && jumpTo(ref.file, ref.line)}
-                  >
-                    {m}
-                  </Button>
-                </div>
-              );
-            })}
+            {[...checkErrors, ...checkWarnings].map((d, i) => (
+              <div key={i} className="diag-item">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  fullWidth
+                  icon={d.severity === "error" ? "cross-circled" : "exclamation-triangle"}
+                  style={{ justifyContent: "flex-start", color: "inherit" }}
+                  disabled={d.line === undefined}
+                  onClick={() => d.line !== undefined && jumpTo(d.file, d.line)}
+                >
+                  <span>
+                    {d.line !== undefined && `${d.file ? `${d.file}:` : ""}${d.line}行目 ・ `}
+                    {d.message}
+                  </span>
+                  <span className="diag-note">{d.code}</span>
+                </Button>
+              </div>
+            ))}
           </>
         )}
       </div>
