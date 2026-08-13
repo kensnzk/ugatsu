@@ -6,12 +6,14 @@
 //
 // 座標はmm・y反転のみ (scale=1)。壁は境界から導出される — 壁を描く操作はここにも無い。
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { canonicalBoundaryOrder, displayName, polyBounds, polygonAreaM2, type Pt } from "@kensnzk/koyu";
+import { displayName, type Pt } from "@kensnzk/koyu/model";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Radio } from "../lib/ds.js";
 import { formOf } from "../lib/form.js";
+import { polyBounds, polygonAreaM2 } from "../lib/koyu-compat.js";
 import { planFigure, type Mark, type MarkRole } from "../lib/planFigure.js";
 import { token } from "../lib/theme.js";
+import { writtenOf } from "../lib/written.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
@@ -231,9 +233,12 @@ export function PlanView() {
         </text>
         {!small && (
           <text x={cx} y={cy + 260} fontSize={200} fill={SUBTLE}>
-            {s.type === "void"
+            {/* 吹抜けは宣言 (`void:1`)、型は書かなくてよい自由なラベル (koyu ADR-0051) */}
+            {s.void
               ? "吹抜け"
-              : `${s.type}${s.semiOutdoor ? " ・ 半屋外" : ""} ・ ${s.areaM2?.toFixed(1)}㎡`}
+              : [s.type, s.semiOutdoor ? "半屋外" : null, `${s.areaM2?.toFixed(1)}㎡`]
+                  .filter(Boolean)
+                  .join(" ・ ")}
           </text>
         )}
         {!small && (
@@ -331,11 +336,13 @@ export function PlanView() {
   for (const [i, k] of of("seg").entries()) {
     wallMarks.push(<path key={`s${i}`} d={d2(k.polygon!)} fill={DERIVED} />);
   }
-  // seg の仕様は書かれた自由語 — 帯の位置は Form が、言葉はモデルが持つ
+  // seg の仕様は書かれた自由語 — 帯の位置は Form が、言葉はモデルが持つ。
+  // 索引から原本へ戻る道は `written.ts` の一本だけである (正準順の並べ替えは一度きり)
+  const written = writtenOf(model);
   for (const [i, g] of form.segs.entries()) {
     if (g.level !== planLevel) continue;
-    const spec = canonicalBoundaryOrder(model)[g.boundary]?.segs[g.index]?.attrs["spec"];
-    if (typeof spec !== "string") continue;
+    const spec = written.segSpec(g.boundary, g.index);
+    if (spec === undefined) continue;
     const h = g.segment.horizontal;
     wallMarks.push(
       <text

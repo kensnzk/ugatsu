@@ -1,7 +1,7 @@
 // `Form` → three.js シーン。**形はここで生まれない。**
 //
 // 空間の気積も、壁が開口で割られた区間も、柱の z 範囲も、段板の立体も、床・天井・屋根も、
-// koyu の `derive(model)` が返す `Form` に既に入っている (koyu ADR-0040 / spec/derivation.md)。
+// koyu の `derive(model)` が返す `Form` に既に入っている (koyu ADR-0040 / docs/reference/form)。
 // ここが持つのは材質・透過・色・見付け厚・地面の板 — すべて見た目である。
 //
 // かつてここは `segmentsFor` `placeOpening` `slabs` `columnsFor` `runSolids` を個別に呼び、
@@ -10,17 +10,13 @@
 //
 // 3Dモード: `Form` の気積・壁の区間・開口・柱・縦動線・面をそのまま立体へ写す。
 // 2.5Dモード: 各レベルの床プレートを重ね、展開係数で持ち上げる (吹抜けは床の不在=穴)。
+//
+// **立体の構成子も koyu が持つ。**開口の帯 (`bandLine`) も斜路の角柱 (`runPrism`) も、
+// 芯線と厚みと z から実体を起こす規則であり、それは導出の一部である (koyu ADR-0058)。
+// かつてこの頁は両方を書き写しており、同じ `Form` から違う形が出る余地が残っていた。
 import * as THREE from "three";
-import { canonicalBoundaryOrder } from "@kensnzk/koyu";
-import type {
-  Form,
-  FormBoundary,
-  FormPanel,
-  Model,
-  Pt,
-  RunSolid,
-  Slab,
-} from "@kensnzk/koyu";
+import { bandLine, runPrism, type Form, type FormPanel, type RunSolid, type Slab } from "@kensnzk/koyu/form";
+import type { Pt } from "@kensnzk/koyu/model";
 import type { ModelColors } from "../lib/colors.js";
 import { token, tokenColor } from "../lib/theme.js";
 
@@ -36,9 +32,10 @@ export interface SceneOptions {
   hiddenLevels: Record<string, true>;
   /**
    * 境界を透過で描くか。`spec` は**書かれた自由語**であり koyu は解釈しない —
-   * 語の意味を決めるのは ugatsu なので、判断は外から渡す (docs/scope.md §5.2)
+   * 語の意味を決めるのは ugatsu なので、判断は外から渡す (docs/scope.md §5.2)。
+   * 述語は `src/lib/written.ts` の `glassSpec(model)` が組む
    */
-  glass?: (b: FormBoundary) => boolean;
+  glass?: (b: { boundary: number }) => boolean;
 }
 
 // 描画色は drawing セマンティックから遅延導出し、製品クロームとデータを分離する。
@@ -65,18 +62,6 @@ export interface BuiltScene {
   group: THREE.Group;
   /** 空間選択の対象 (userData.path を持つ) */
   pickables: THREE.Mesh[];
-}
-
-/**
- * `spec` に「ガラス / カーテンウォール / サッシ / glass」を含む境界を透過で描く。
- * **`spec` は自由語である** (koyu ADR-0020) — 語の意味を決めるのは ugatsu であり、
- * これは意味論ではなくビューアの表現である
- */
-export function glassSpec(model: Model): (b: FormBoundary) => boolean {
-  return (b) => {
-    const v = canonicalBoundaryOrder(model)[b.boundary]?.attrs["spec"];
-    return typeof v === "string" && /カーテンウォール|ガラス|サッシ|glass/i.test(v);
-  };
 }
 
 function boxMesh(
@@ -162,7 +147,8 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
   for (const s of form.spaces) {
     if (!s.level || levelHidden(s.level)) continue;
     const base = zOf(s.level);
-    const isVoid = s.type === "void";
+    // 吹抜けかどうかは**宣言** (`void:1`) であって型の語ではない (koyu ADR-0051 / muro 1.1)
+    const isVoid = s.void;
     const color = new THREE.Color(colors.byPath(s.path));
 
     if (stackMode) {
@@ -350,12 +336,10 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
     if (opts.showOpenings) {
       for (const o of form.openings) {
         if (levelHidden(o.level)) continue;
-        const half = o.w / 2;
-        const len = Math.hypot(o.segment.x2 - o.segment.x1, o.segment.y2 - o.segment.y1) || 1;
-        const ux = ((o.segment.x2 - o.segment.x1) / len) * half;
-        const uy = ((o.segment.y2 - o.segment.y1) / len) * half;
+        // 帯が線分上で占める区間は koyu の構成子が決める (ADR-0058)。
+        // 足しているのは見付け厚の増しだけで、それは見た目である
         const m = segBox(
-          { x1: o.cx - ux, y1: o.cy - uy, x2: o.cx + ux, y2: o.cy + uy },
+          bandLine(o.segment, o.cx, o.cy, o.w),
           o.z0,
           o.z1,
           o.t + JOINERY_T,
@@ -409,26 +393,11 @@ function solidMesh(solid: RunSolid, mat: THREE.Material): THREE.Mesh {
       mat,
     );
   }
-  // 傾いた版: up 側へ z0→z1 で上がる。矩形の四隅の高さを線形に決め、厚み t ぶん下へ落とす
-  const zAt = (x: number, y: number): number => {
-    const f =
-      solid.up === "E"
-        ? (x - r.x1) / Math.max(1, r.x2 - r.x1)
-        : solid.up === "W"
-          ? (r.x2 - x) / Math.max(1, r.x2 - r.x1)
-          : solid.up === "N"
-            ? (y - r.y1) / Math.max(1, r.y2 - r.y1)
-            : (r.y2 - y) / Math.max(1, r.y2 - r.y1);
-    return solid.z0 + f * (solid.z1 - solid.z0);
-  };
-  const corners: Array<[number, number]> = [
-    [r.x1, r.y1],
-    [r.x2, r.y1],
-    [r.x2, r.y2],
-    [r.x1, r.y2],
-  ];
-  const top = corners.map(([x, y]) => [tx(x), ty(zAt(x, y)), tz(y)] as const);
-  const bot = corners.map(([x, y]) => [tx(x), ty(zAt(x, y) - solid.t), tz(y)] as const);
+  // 傾いた版: 四隅の高さの振り方は koyu の `runPrism` が決める (ADR-0058)。
+  // ここが持つのは world → three の座標の付け替えだけである
+  const prism = runPrism(solid);
+  const top = prism.poly.map((p, i) => [tx(p.x), ty(prism.top[i]!), tz(p.y)] as const);
+  const bot = prism.poly.map((p, i) => [tx(p.x), ty(prism.bottom[i]!), tz(p.y)] as const);
   const v = [...top, ...bot].flat();
   // 上面 0-1-2-3 / 下面 4-5-6-7 (上から見て同じ並び) の側面を張る
   const idx = [

@@ -1,4 +1,4 @@
-// 形の唯一の入口 (koyu ADR-0040 / spec/derivation.md)。
+// 形の唯一の入口 (koyu ADR-0040 / docs/reference/form)。
 //
 // **ugatsu は形を組み立てない。**平面も立体も 2.5D も、ここが返す一つの `Form` を描くだけで
 // ある。かつては `PlanView` と `buildScene` が `segmentsFor` `placeOpening` `placeBand`
@@ -10,7 +10,11 @@
 //
 // 導出は同じモデルに対して一度だけ行う。モデルは再合成のたびに新しい実体になるので、
 // WeakMap の鍵にちょうどよい (古いモデルの Form は一緒に回収される)。
-import { derive, type Form, type Model } from "@kensnzk/koyu";
+//
+// koyu 0.21.0 で公開面は 12 の入口へ割れた (koyu ADR-0053)。**import の一行が、どの契約に
+// 寄りかかっているかを言う** — 形は `@kensnzk/koyu/form` からしか来ない。
+import { derive, type Form } from "@kensnzk/koyu/form";
+import type { Model } from "@kensnzk/koyu/model";
 
 const cache = new WeakMap<Model, Form>();
 

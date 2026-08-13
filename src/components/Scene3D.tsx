@@ -2,13 +2,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import { areaM2, displayName } from "@kensnzk/koyu";
+import { areaM2, displayName, isVoid } from "@kensnzk/koyu/model";
 import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Button, Checkbox, Slider, Switch } from "../lib/ds.js";
 import { formOf } from "../lib/form.js";
 import { tokenColor } from "../lib/theme.js";
+import { glassSpec } from "../lib/written.js";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
-import { buildScene, disposeGroup, glassSpec, type BuiltScene } from "../three/buildScene.js";
+import { buildScene, disposeGroup, type BuiltScene } from "../three/buildScene.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
 import { ToolIcon } from "./ui.js";
@@ -410,7 +411,7 @@ export function Scene3D() {
           {(() => {
             const s = model.spaces.get(tooltip.path);
             if (!s) return tooltip.path;
-            const a = s.type === "void" ? "吹抜け" : `${areaM2(s)?.toFixed(2) ?? "–"}㎡`;
+            const a = isVoid(s) ? "吹抜け" : `${areaM2(s)?.toFixed(2) ?? "–"}㎡`;
             return `${displayName(s)} ・ ${a}`;
           })()}
           <span className="tooltip-path">{tooltip.path}</span>

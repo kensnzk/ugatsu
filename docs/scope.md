@@ -1,8 +1,8 @@
 # 範囲の規範 — ugatsu が描くもの、描かないもの
 
-ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描き、何を描かないか」の規範である。**
+ugatsu 0.6.0 / koyu 0.21.0 / muro 1.3 現在。**この文書が「何を描き、何を描かないか」の規範である。**
 
-規範の上流は koyu にある。三領域と凍る面は [koyu spec/scope.md](https://github.com/kensnzk/koyu/blob/main/spec/scope.md)、目的と範囲は [koyu docs/policy.md](https://github.com/kensnzk/koyu/blob/main/docs/policy.md) が持つ。ここと上流が食い違ったら**上流が正である**。
+規範の上流は koyu にある。四領域と凍る面は [koyu docs/reference/scope.md](https://github.com/kensnzk/koyu/blob/main/docs/reference/scope.md)、公開面は [docs/reference/api/index.md](https://github.com/kensnzk/koyu/blob/main/docs/reference/api/index.md) が持つ。ここと上流が食い違ったら**上流が正である**。
 
 > **koyu は座標を作らない。ugatsu は意味を作らない。**
 
@@ -16,8 +16,8 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 | 面 | 約束の内容 | 状態 |
 |---|---|---|
-| **入力** | muro 1.0 と機械形式 1.0 を読む | 🔨 muro 1.0 を読む。機械形式は書き出しのみ (読み込みは未実装) |
-| **導出の一致** | 参照実装と同じ形を作る。見た目の質はここに足すが、形は変えない | ✅ **形は `derive(model): Form` からしか来ない** ([ADR-0007](decisions/0007-draw-the-form.md))。`test/form.test.ts` が五つを縛る — 形の出所が一つ・立体が Form と座標まで一致・平面が Form を取りこぼさない・上部吹抜けの投影 11 件・決まらなければ作らない |
+| **入力** | muro と機械形式を読む | 🔨 muro 0.1–1.3 を読む (最新 1.3・版行の無い原本は 1.1)。機械形式 (`koyu-canonical/2.0`) は書き出しのみ (読み込みは未実装) |
+| **導出の一致** | 参照実装と同じ形を作る。見た目の質はここに足すが、形は変えない | ✅ **形は `derive(model): Form` からしか来ない** ([ADR-0007](decisions/0007-draw-the-form.md))。実体の構成子も koyu のものを使い、書き写さない ([ADR-0008](decisions/0008-follow-muro-1-3.md))。`test/form.test.ts` が六つを縛る — 形の出所が一つ・構成子を書き写さない・立体が Form と座標まで一致・平面が Form を取りこぼさない・上部吹抜けの投影 11 件・決まらなければ作らない |
 | **配布の形** | 単一の HTML であり、それがそのまま公開されるものである | ✅ `npm run build` が `dist/index.html` 一枚を吐く |
 | **範囲の明示** | 何を描き、何を描かないかが文書にある | ✅ この文書 |
 
@@ -29,7 +29,7 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 六つの面がある。**どれも書かれたものからの生成物であって、描く操作はどこにも無い。**
 
-そして**形はどの面でも一つの入口から来る** — `formOf(model)` (= koyu の `derive(model): Form`) である ([ADR-0007](decisions/0007-draw-the-form.md))。座標も厚みも z 範囲も向きも、`Form` に既に入っている。ugatsu が足すのは色・線幅・線種・記号・注記の言葉・紙面の余白だけで、それらは `Form` に一つも無い ([koyu spec/derivation.md](https://github.com/kensnzk/koyu/blob/main/spec/derivation.md) §7)。
+そして**形はどの面でも一つの入口から来る** — `formOf(model)` (= koyu の `derive(model): Form`) である ([ADR-0007](decisions/0007-draw-the-form.md))。座標も厚みも z 範囲も向きも、`Form` に既に入っている。ugatsu が足すのは色・線幅・線種・記号・注記の言葉・紙面の余白だけで、それらは `Form` に一つも無い ([koyu docs/reference/form](https://github.com/kensnzk/koyu/blob/main/docs/reference/form/index.md))。
 
 ### 2.1 平面 (2D) — `src/lib/planFigure.ts` + `src/components/PlanView.tsx`
 
@@ -40,24 +40,27 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 | 出るもの | 出所 |
 |---|---|
 | 空間の面 (導出された凸片。描かれた線で切られていれば斜めになる) | `class:cut` / `of:space` |
-| 吹抜けの対角破線 | `FormSpace.type` が `void` |
+| 吹抜けの対角破線 | `FormSpace.void` (**宣言 `void:1` であって型の語ではない** — koyu ADR-0051) |
 | 半屋外の淡い塗り | `FormSpace.semiOutdoor` |
-| 壁の黒帯 (斜め壁を含む) | `class:cut` / `of:boundary` — **開口で割られた区間**が来る |
-| 開放的な分節の破線 | `of:boundary` で材を持たないもの |
-| 手すり・柵の細実線 | `FormBoundary.air` |
+| 壁の黒帯 (斜め壁を含む) | `class:cut` / `of:boundary` の **`polygon`** — 開口で割られた区間の足あと |
+| 開放的な分節の破線 | `of:boundary` で **`polygon` を持たないもの** (= 材が無い) |
+| 手すり・柵の細実線 | `FormBoundary.air` の区間。芯線は `of:boundary` の `lines` が持って届く |
 | 扉の葉と軌跡・引き戸の戸袋・窓の芯線 | `class:swing` と `of:opening` |
 | 数えない分節 (`seg`) の帯 | `Form.segs` (`spec` の注記だけモデルから) |
 | 数えない分節 (`area`) の破線枠と名前 | `s.areas` (**書かれた与件**であって導出ではない) |
+| `seg` の仕様の注記 | `written.ts` が `Form` の索引から原本の `spec` を引く (**書かれた自由語**) |
 | 柱 | `of:column` |
 | 縦動線 (段・蹴込線・切断線・上下の矢印・注記) | `of:run` (役は `outline` / `tread` / `break` / `arrow` / `anchor`) |
 | **上部吹抜けの投影** (破線と「上部吹抜け」の注記) | `class:above` / `of:space` |
 | 敷地境界線 (一点二点鎖線)。**最下階のみ** | `Form.site` |
 | 通り芯と符号の丸 (既定は非表示。トグルで出す) | `model.grid` (**書かれた与件**) |
-| 空間の名前・型・面積・パス | `displayName` / `FormSpace.areaM2` |
+| 空間の名前・型・面積・パス | `displayName` / `FormSpace.areaM2`。**型は書かれないことがある** (`(型なし)`) |
 
 **欠き取り (壁の黒帯を紙の色で塗り潰して穴に見せる手) は無い。**壁は最初から開口で割られた区間の列であり、切断面が切ったものだけが黒帯になる。腰壁 (`class:below`) と垂れ壁 (`class:above`) は描かない — **これが省く判断のすべてである**。
 
-パン・ズーム・空間の選択ができる。**色は用途 / 型 / レベルの三つの軸から選ぶ** (`src/lib/colors.ts`)。
+**物があるかどうかを言うのは `polygon` の有無である。**境界の区間は足あと (厚みのある四辺形) と芯線の**両方**を持って届き、どちらで描くかは見た目の判断として ugatsu に残されている (koyu ADR-0058)。`lines` を先に見ると壁がすべて「材を持たない境界」の枝へ落ち、**黒帯が一本も出ないまま破線の細線になる** — 実際にそうなっていた ([ADR-0008](decisions/0008-follow-muro-1-3.md))。`test/form.test.ts` の「材を持つ境界は帯として描かれる」が縛る。
+
+パン・ズーム・空間の選択ができる。**色は型 / レベル / 原本に書かれた区分の鍵から選ぶ** (`src/lib/colors.ts`)。既定は型 — 室の目的は型の位置が持つ (koyu ADR-0061)。第三の軸の母集団は**そのモデルに書かれている名前空間つきの鍵** (`lease.category` `fire.compartment` …) であり、**既定の鍵は持たない**。
 
 ### 2.2 立体 (3D) — `src/three/buildScene.ts`
 
@@ -66,7 +69,7 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 | 出るもの | 出所 |
 |---|---|
 | 空間の気積 (半透明) | `FormSpace.z0` / `z1` — **決まらなければ立体を作らない** |
-| 吹抜け (輪郭線だけの幽霊 — 実体を持たない気積) | `FormSpace.type` が `void` |
+| 吹抜け (輪郭線だけの幽霊 — 実体を持たない気積) | `FormSpace.void` (宣言) |
 | 半屋外 (気積ではなく薄い地面) | `FormSpace.semiOutdoor` |
 | 壁 (斜め壁も芯線に沿って回る) | `FormBoundary.material.panels` |
 | 建具 (扉とガラス) | `Form.openings` の `z0`..`z1` |
@@ -83,15 +86,17 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 ### 2.4 面積表 — `src/lib/stats.ts` / `src/components/AreaTable.tsx`
 
-レベル別の行、屋内小計、延べ面積、屋外の別掲、半屋外の別掲、ゾーン別、用途別、型別、規模 (空間・境界・扉・窓の数)。CSV に書き出せる。
+レベル別の行、屋内小計、延べ面積、屋外の別掲、半屋外の別掲、ゾーン別、**鍵別**、型別、規模 (空間・境界・扉・窓の数)。CSV に書き出せる。
 
 **母集団は ugatsu が決めない。**算入するかどうかは koyu の `isIndoor` が決め、ugatsu は区分に名前を付けて表に写すだけである ([§4.1](#41-面積の母集団))。
 
+**集計の軸も ugatsu が決めない。**muro 1.3 が `use` を廃した (koyu ADR-0061) ので、「用途別」という固定の一列は無い。列も「◯◯別」の表も**原本に書かれた名前空間つきの鍵の数だけ**立ち、書かれていなければ立たない。その鍵を持たない空間は `(未記載)` に入るので、**バケツの合計は延べ面積に閉じる** — かつての `byUse` は鍵の無い空間を黙って落としていた。
+
 ### 2.5 インスペクタ — `src/components/Inspector.tsx`
 
-選択が無いとき: 空間・境界・レベル・ゾーンの数、**版の三本** ([§6](#6-読める版))、`check` の結果、敷地の問い (`siteReport` — 敷地面積・建築面積・延べ面積・接道)。
+選択が無いとき: 空間・境界・レベル・ゾーンの数、**版の三本** ([§6](#6-読める版))、`check` の結果、敷地の問い (koyu の敷地分析 — 敷地面積・建築面積・延べ面積・接道)。**構造が矛盾していれば分析は走らず、敷地の表そのものが出ない** — 0 ㎡ と表示するのは嘘である。
 
-空間を選んだとき: 型・レベル・面積・半屋外の別・天井高・実効用途・矩形数・書かれた属性のすべて。加えて**動線** — 行き先を選ぶと `doorsBetween` が返した経路 (扉の数と経由する空間) が平面・3D・面積表の三面で同時に光る。
+空間を選んだとき: 型・レベル・面積・半屋外の別・天井高・ゾーンから継いだ区分・矩形数・書かれた属性のすべて。加えて**動線** — 行き先を選ぶと `doorsBetween` が返した経路 (扉の数と経由する空間) が平面・3D・面積表の三面で同時に光る。
 
 ### 2.6 エディタ — `src/components/EditorPane.tsx`
 
@@ -148,7 +153,9 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 **ugatsu は判定を一つも持たない。**`Finding` を作らず、閾値を持たず、合否を言わない。
 
-判定は koyu の `validate` が言う ([koyu spec/validation.md](https://github.com/kensnzk/koyu/blob/main/spec/validation.md))。**ugatsu はまだ `validate` を呼んでいない** ([§7](#7-koyu-100-への追随))。
+判定は koyu の `assess` が言う ([koyu docs/reference/validate](https://github.com/kensnzk/koyu/blob/main/docs/reference/validate/index.md))。**ugatsu はまだ `assess` を呼んでいない** ([§7](#7-上流への追随))。
+
+**敷地の数だけは koyu の分析から来る。**`runAnalysis(model, SITE_ANALYSIS_ID, …)` は「文脈と枠を名乗って事実を測る」面であり、**合否も水準も返さない** (koyu ADR-0054)。規則を走らせる `assess` とは別の入口であり、ugatsu が開けているのはこちらだけである ([ADR-0008](decisions/0008-follow-muro-1-3.md))。
 
 したがって、次はどれも画面に出ない。
 
@@ -163,11 +170,13 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 **延べ面積の母集団は koyu の `isIndoor` が唯一の答えである。**ugatsu は数え直さない。
 
+**区分は宣言から読む。型の語からは読まない** — muro 1.1 が型の位置から構造を抜いた (koyu ADR-0051)。型は自由なラベルであり、書かなくてもよい位置である。
+
 | 区分 | 判定 | 延べ面積 |
 |---|---|---|
 | 屋内 | `isIndoor` が真 | **算入する** |
-| 吹抜け | `type:void` | 面を持たない |
-| 屋外 | `type:exterior` | 算入しない。**別に立てる** |
+| 吹抜け | `isVoid` (**宣言 `void:1`**) | 面を持たない |
+| 屋外 | `isOutside` (**宣言 `outside:1`**) | 算入しない。**別に立てる** |
 | 半屋外 | 外部に `open` または `air:1` で接する (導出) | 算入しない。**別に立てる** (算入条件は法規細部であり、ugatsu も koyu も決めない) |
 
 **かつてここは自前で数えていた。**「吹抜け以外はすべて床」という一行が、外部 (広場・空地) と半屋外 (バルコニー・屋外階段) を延べ面積へ算入し、同じ原本に対して `koyu stats` と違う答えを返していた。
@@ -179,11 +188,13 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 | tower | 5,727.08㎡ | **4,785.92㎡** (半屋外 941.16) | 941.16㎡ |
 | house | 165.99㎡ | **92.75㎡** (半屋外 73.24) | 73.24㎡ |
 
-`test/core.test.ts` が四例すべてで表の合計と `isIndoor` の合計の一致を縛り、区分が `isIndoor` と厳密に一致することを縛り、延べ面積が `siteReport.totalFloor` と一致することを縛る。**同じ問いに二つの答えを持たない。**
+`test/core.test.ts` が四例すべてで表の合計と `isIndoor` の合計の一致を縛り、区分が `isIndoor` と厳密に一致することを縛り、延べ面積が敷地分析の `totalFloor` と一致することを縛る。**同じ問いに二つの答えを持たない。**
+
+**そして同じ壊れ方が一度戻りかけた。**`type:void` / `type:exterior` を読んでいた三行は muro 1.1 以降の原本に対して例外を投げず、ただ違う面積を返す。同梱例が `space /out name:外部 outside:1` へ移った時点で、屋外はすべて延べ面積に算入されるところだった ([ADR-0008](decisions/0008-follow-muro-1-3.md))。**「構造は宣言から読む — 型の語からではない」**がそれを縛る。
 
 ### 4.2 緑の意味
 
-`check` が緑であることの意味は koyu が定義している — **構造層と解釈層について、宣言された不変量が成り立つ**。それ以上ではない ([koyu spec/scope.md §3](https://github.com/kensnzk/koyu/blob/main/spec/scope.md))。
+`check` が緑であることの意味は koyu が定義している — **構造層と解釈層について、宣言された不変量が成り立つ**。それ以上ではない ([koyu docs/reference/scope.md](https://github.com/kensnzk/koyu/blob/main/docs/reference/scope.md))。
 
 **緑を根拠に「動く」と主張しない。**接する空間の既定は壁なので、扉を一枚も宣言しない二階建ては緑のまま完全に密封される。外皮も自動では生えない。ugatsu の画面が整っていることは、建築として成り立っていることを意味しない。
 
@@ -195,7 +206,7 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 ### 5.1 導出の定数は koyu が持つ。ugatsu は写しさえ持たない
 
-壁厚の既定 100mm も、手すりの天端高 1100mm も、開口のまぐさ高 2000mm も、階高の決め方も、**台帳の既定ではない**。台帳 ([koyu spec/vocabulary.md](https://github.com/kensnzk/koyu/blob/main/spec/vocabulary.md)) が定めるのは「何を書いてよいか」であり、これらが定めるのは「**書かれなかったときに何を導くか**」である。両者は別の台帳を持つ — 規範は [koyu spec/derivation.md](https://github.com/kensnzk/koyu/blob/main/spec/derivation.md) §5 の 17 件の表で、実装の出所は `DERIVATION_CONSTANTS` である。
+壁厚の既定 100mm も、手すりの天端高 1100mm も、開口のまぐさ高 2000mm も、階高の決め方も、**台帳の既定ではない**。台帳 ([koyu docs/reference/muro/attributes.md](https://github.com/kensnzk/koyu/blob/main/docs/reference/muro/attributes.md)) が定めるのは「何を書いてよいか」であり、これらが定めるのは「**書かれなかったときに何を導くか**」である。両者は別の台帳を持つ — 規範は [koyu docs/reference/form](https://github.com/kensnzk/koyu/blob/main/docs/reference/form/index.md) の表で、実装の出所は `DERIVATION_CONSTANTS` である。
 
 **ugatsu はこの表の写しを一つも持たない。**書かれていようといまいと、値は `Form` に入って届く。かつては壁厚 100mm が `PlanView.tsx` と `buildScene.ts` の**二箇所に別々のリテラル**として在り (koyu 側と合わせて四箇所)、開口の高さ (扉 2000 / 窓 1200) と窓台 800mm は**ugatsu の発明**だった ([ADR-0007](decisions/0007-draw-the-form.md))。
 
@@ -207,7 +218,8 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 | 対象 | ugatsu の既定 | 何をしているか | 場所 |
 |---|---|---|---|
-| ガラスの外皮 | `spec` に「ガラス / カーテンウォール / サッシ / glass」を含めば透過 | **`spec` は自由語である** (koyu ADR-0020)。語の意味を ugatsu が決めており、**これは意味を作ることに最も近い**。だから形の外へ出し、述語 `glassSpec(model)` として渡す | `buildScene.ts` の `glassSpec` |
+| ガラスの外皮 | `spec` に「ガラス / カーテンウォール / サッシ / glass」を含めば透過 | **`spec` は自由語である** (koyu ADR-0020)。語の意味を ugatsu が決めており、**これは意味を作ることに最も近い**。だから形の外へ出し、述語 `glassSpec(model)` として渡す | `written.ts` の `glassSpec` |
+| 集計と色分けの軸 | **持たない** (既定の鍵は無い) | どの区分で数えるかは原本が決める。既定を置けば muro 1.3 が廃した特権的な集計軸が戻る (koyu ADR-0061 決定6) | `colors.ts` の `carriedKeys` |
 | 半屋外の地面の厚み | **150mm** | 半屋外を気積ではなく地面として描くための表現 | `buildScene.ts` の `GROUND_T` |
 | 2.5D の床プレート厚 | **120mm** | 積層は実寸の図ではない | `buildScene.ts` の `PLATE_T` |
 | 建具の見付け厚 | 壁厚 + **60mm** | 壁面から少し出して見えるようにする | `buildScene.ts` の `JOINERY_T` |
@@ -229,15 +241,25 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 ## 6. 読める版
 
-版は三本あり、**別々に動くので一つにまとめて名乗ることはできない** ([koyu spec/scope.md §9](https://github.com/kensnzk/koyu/blob/main/spec/scope.md))。
+版は三本あり、**別々に動くので一つにまとめて名乗ることはできない** (koyu [ADR-0042](https://github.com/kensnzk/koyu/blob/main/docs/decisions/0042-two-version-lines.md) — 二本の版の線)。
 
 | 版 | いま | 出所 |
 |---|---|---|
-| **ugatsu** | 0.4.0 | `package.json` (ビルド時に焼き込む) |
-| **koyu** | 1.0.0-rc.1 | 実際に解決された `@kensnzk/koyu` の `package.json` — 範囲指定ではなく実体 |
-| **muro** | 1.0 | koyu が実行時に名乗る `DEFAULT_LANGUAGE_VERSION` |
+| **ugatsu** | 0.6.0 | `package.json` (ビルド時に焼き込む) |
+| **koyu** | 0.21.0 | 実際に解決された `@kensnzk/koyu` の `package.json` — 範囲指定ではなく実体 |
+| **muro** | 1.3 | koyu が実行時に名乗る `NEWEST_LANGUAGE_VERSION` |
 
-**`package.json` の範囲指定 (`^0.15.0`) は、いま嘘である。**ugatsu は `derive` を要求するので 0.15.0 では動かないが、koyu 1.0.0-rc.1 はまだレジストリに無い (公開済みは 0.15.0 まで)。開発は `npm run koyu:local` ([ADR-0005](decisions/0005-local-koyu-pipeline.md)) がローカルのツリーを見ており、**公開されたら `package.json` と lockfile を同じ変更で上げる**。範囲ではなく実体を焼き込む設計は、まさにこのためにある — 画面と配布HTMLが名乗る版は、いつでも本当に動いている版である。
+**muro は一点ではなく幅である。**三つの数が別のことを言う。
+
+| 数 | 意味 | いま |
+|---|---|---|
+| `NEWEST_LANGUAGE_VERSION` | 読める最新版。**全部の記法を得るために原本が名乗るべき版** | 1.3 |
+| `SUPPORTED_LANGUAGE_VERSIONS` | 読める範囲。古い版は意味が保たれる場合にだけ通る | 0.1–1.3 |
+| `DEFAULT_LANGUAGE_VERSION` | **版行を書かなかった原本の読み方。1.1 に凍っており、最新には追随しない** | 1.1 |
+
+**かつてここは三つ目を「読める muro の版」として出していた。**それは凍っている数なので、koyu が 1.3 まで読むようになっても画面と配布HTMLは「muro 1.1」と名乗り続けていた ([ADR-0008](decisions/0008-follow-muro-1-3.md))。
+
+**本当の依存は言語の版であって、パッケージの範囲ではない。**`main.tsx` が起動時に `requireMuro("1.3")` を投げる — 同梱の例はこの版で書かれているので、それを読まない koyu を掴んだビルドは最初の解析エラーではなくそこで、直し方を名乗って落ちる。範囲指定 (`^0.21.0`) は黙って古びるが、この一行は古びない。
 
 配布HTML は三つを `<meta name="ugatsu:version">` / `<meta name="koyu:version">` / `<meta name="muro:version">` に持ち、画面はツールバー左端 (hover で三本すべて) とインスペクタの概要に出す。**どの版の形を見ているかを利用者が言えない状態で凍結はできない。**
 
@@ -247,25 +269,31 @@ ugatsu 0.4.0 / koyu 1.0.0-rc.1 / muro 1.0 現在。**この文書が「何を描
 
 ---
 
-## 7. koyu 1.0.0 への追随
+## 7. 上流への追随
 
-koyu は 1.0.0-rc.1 で領域を分け (`src/core/` `src/validate/` `src/draw/`)、形の参照実装 `derive(model): Form` を立て、機械が読む面を英語へ揃えた。ugatsu が使う公開面は 31 の名前 (値 19・型 12) で、**追随は済んだ二つと、残る四つに分かれる**。
+koyu は 0.21.0 で公開面を 12 の入口へ割り (ADR-0053)、実体の構成子を公開し (ADR-0058)、muro は 1.3 で `use` を廃した (ADR-0061)。**追随は済んだ六つと、残る三つに分かれる** ([ADR-0008](decisions/0008-follow-muro-1-3.md))。
 
 | 追随 | 状態 |
 |---|---|
-| **`derive(model): Form` を呼ぶ** | ✅ **済んだ** ([ADR-0007](decisions/0007-draw-the-form.md))。形は `src/lib/form.ts` の `formOf(model)` からしか来ない。`PlanView` も `buildScene` も koyu の形の部品を**取り込まない** — `test/form.test.ts` が import で縛る。凍結面「導出の一致」はこれで検査できる |
-| **`checkDiagnostics` へ移る** | ✅ **済んだ。**`store.ts` は `Diagnostic { code, severity, message, line, file, path, related }` を持ち、エディタは診断コードを出して出所へ飛ぶ。かつては `check` が返した文字列を正規表現で解いており、koyu が機械向け出力を英語へ揃えた時点で**黙って壊れた**。`related` (重なりの相手) はまだ画面に出していない |
-| **`validate` を呼ぶ** | 🔨 建築的な判定 (`Finding { rule, level }`) は core の診断と**型からして別である**。判定を出すなら、それが判定であって `check` の保証ではないことが読み取れる形で出す ([§4](#4-何を判定しないか)) |
-| **`daylight` → `daylightInputs`** | 🔨 採光は「床面積と有効窓面積」を返す問いになり、1/7 の線引きは `validate` へ移った。ugatsu は呼んでいないので**壊れないが、採光を出すときはこの形になる** |
-| **機械形式の読み込み** | 🔨 正準JSONに形式そのものの版が付く。凍結面「入力」は muro と機械形式の両方を要求する |
-| **レジストリの koyu を 1.0.0-rc.1 へ** | 🔨 公開されたら `package.json` と lockfile を上げる ([§6](#6-読める版)) |
+| **`derive(model): Form` を呼ぶ** | ✅ **済んだ** ([ADR-0007](decisions/0007-draw-the-form.md))。形は `src/lib/form.ts` の `formOf(model)` からしか来ない。`PlanView` も `buildScene` も koyu の形の部品を**取り込まない** — `test/form.test.ts` が import で縛る (サブパスも見る) |
+| **`checkDiagnostics` へ移る** | ✅ **済んだ。**`store.ts` は `Diagnostic { code, severity, message, line, file, path, related }` を持ち、エディタは診断コードを出して出所へ飛ぶ。`related` (重なりの相手) はまだ画面に出していない |
+| **12 の入口へ張り替える** | ✅ **済んだ。**import の一行がどの契約に寄りかかっているかを言う — 凍る面 (ルート・`/model`・`/form`・`/graph`) と凍らない面 (`/draw`) が混ざらない |
+| **型の位置から構造を読むのをやめる** | ✅ **済んだ。**`isVoid` / `isOutside` と `FormSpace.void` / `.outside` が答える。**落ちない壊れ方だった** ([§4.1](#41-面積の母集団)) |
+| **`use` の廃止に追随する** | ✅ **済んだ。**集計と色分けの軸は原本に書かれた鍵から立ち、**既定の鍵は持たない** ([§2.4](#24-面積表--srclibstatsts--srccomponentsareatabletsx)) |
+| **実体の構成子を koyu から取る** | ✅ **済んだ。**`band` / `bandLine` / `runPrism` の書き写しを消した (ADR-0058)。座標は一つも動かなかった |
+| **`assess` を呼ぶ** | 🔨 建築的な判定 (`AssessmentReport` の `RuleOutcome { status }`) は core の診断と**型からして別である**。判定を出すなら、それが判定であって `check` の保証ではないことが読み取れる形で出す ([§4](#4-何を判定しないか))。敷地の数だけは `runAnalysis` (判定を持たない面) から来ている |
+| **採光** | 🔨 採光は「床面積と有効窓面積」を返す分析になり、1/7 の線引きは規則へ移った。ugatsu は呼んでいないので**壊れないが、採光を出すときはこの形になる** |
+| **機械形式の読み込み** | 🔨 正準JSONは `koyu-canonical/2.0` を名乗る。凍結面「入力」は muro と機械形式の両方を要求する |
+
+**移植して抱えているものが一つある。**koyu が公開面から取り下げた五つの名 (`canonicalBoundaryOrder` / `polyBounds` / `polygonAreaM2` / `slopeText` / `siteReport`) を `src/lib/koyu-compat.ts` が持つ。`siteReport` は `runAnalysis` への転写、幾何の三つは数行の移植、`canonicalBoundaryOrder` だけが**ずれても落ちない**移植なので、`test/koyu-compat.test.ts` が同梱例すべてで koyu の出力に突き合わせる。**koyu 自身の文書はこれが公開面に在るといまも書いている** — 出し直されたらこの頁は消える。
 
 ---
 
 ## 8. 持たないもの
 
 - **意味を作ること。**面積の母集団も、通行できるかどうかも、その空間が何であるかも、原本と koyu が答える
-- **判定。**閾値は建築の側にあり、`validate` が持つ
+- **集計の軸。**どの区分で数えるかは原本が決める。**既定の鍵を持たない** — 置けば特権的な軸が戻る
+- **判定。**閾値は建築の側にあり、`assess` が持つ
 - **原本の書き換え以外の編集。**GUI で図を触っても原本は変わらない。**編集はすべてテキストへの操作である**
 - **サーバー。**単一HTMLであり、開いたブラウザの中で完結する。原本はファイルシステムにあり、履歴は git が持つ
 - **実務解像度の追求。**カバー率は価値ではない

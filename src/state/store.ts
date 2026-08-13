@@ -2,17 +2,13 @@
 // すべての編集は (将来のGUIオーサリングも含め) テキストへの操作として設計する。
 // v0.2: 原本は一枚のテキストからレイヤー群 (files+entry) になった (koyu ADR-0010)。
 // 各レイヤーは分担の単位で、合成 (parseFiles) のコンフリクトは出所つきのエラーになる。
+// v0.6: koyu 0.21.0 で公開面が 12 の入口へ割れた (koyu ADR-0053) — 合成と整合はルート、
+// 通行の問いは `/graph`、モデルの型は `/model` から来る。**import の一行がどの契約かを言う。**
 import { create } from "zustand";
-import {
-  checkDiagnostics,
-  doorsBetween,
-  parseFiles,
-  SourceError,
-  type Diagnostic,
-  type Model,
-  type Route,
-} from "@kensnzk/koyu";
-import type { ColorMode } from "../lib/colors.js";
+import { checkDiagnostics, parseFiles, SourceError, type Diagnostic } from "@kensnzk/koyu";
+import { doorsBetween, type Route } from "@kensnzk/koyu/graph";
+import type { Model } from "@kensnzk/koyu/model";
+import { attrKeyOf, carriedKeys, type ColorMode } from "../lib/colors.js";
 import { applyTheme, initialTheme, type Theme } from "../lib/theme.js";
 
 export type MainView = "plan" | "3d" | "table";
@@ -138,9 +134,15 @@ export const useViewer = create<ViewerState>()((set, get) => {
       const selected = st.selected && model.spaces.has(st.selected) ? st.selected : null;
       const routeTarget =
         st.routeTarget && model.spaces.has(st.routeTarget) ? st.routeTarget : null;
+      // 色分けの鍵はモデルに書かれたものだけである。前のモデルの鍵が残ると、
+      // 凡例が一色になって「区分が無い」ようにしか見えなくなる
+      const key = attrKeyOf(st.colorMode);
+      const colorMode: ColorMode =
+        key !== undefined && !carriedKeys(model).includes(key) ? "type" : st.colorMode;
       set({
         ...base,
         model,
+        colorMode,
         modelKey: st.modelKey + 1,
         fitKey: fresh ? entry + String(st.modelKey) : st.fitKey,
         parseError: null,
@@ -180,7 +182,9 @@ export const useViewer = create<ViewerState>()((set, get) => {
     checkWarnings: [],
 
     mainView: "plan",
-    colorMode: "use",
+    // 既定の軸は**型** — 室の目的は型の位置が持つ (koyu ADR-0061 決定1)。
+    // 特権的な集計軸を既定に置かない (決定6)
+    colorMode: "type",
     planLevel: null,
     hiddenLevels: {},
     stackMode: false,

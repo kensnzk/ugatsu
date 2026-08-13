@@ -1,25 +1,20 @@
 // @kensnzk/koyu が期待どおり答えること・ビューワーの集計とシーン生成の検算
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import {
-  areaM2,
-  check,
-  DEFAULT_LANGUAGE_VERSION,
-  doorsBetween,
-  isIndoor,
-  parse,
-  parseFiles,
-  segmentsFor,
-  siteReport,
-  svgPlan,
-  toCanonical,
-  zoneAreaM2,
-} from "@kensnzk/koyu";
+import { check, NEWEST_LANGUAGE_VERSION, parse, parseFiles, toCanonical } from "@kensnzk/koyu";
+import { svgPlan } from "@kensnzk/koyu/draw";
+import { doorsBetween, segmentsFor } from "@kensnzk/koyu/graph";
+import { areaM2, isIndoor, zoneAreaM2 } from "@kensnzk/koyu/model";
 import { buildColors } from "../src/lib/colors.js";
 import { formOf } from "../src/lib/form.js";
+import { siteReport } from "../src/lib/koyu-compat.js";
 import { computeStats, statsToCsv } from "../src/lib/stats.js";
 import {
+  assertMuro,
   KOYU_VERSION,
+  MURO_READS,
+  MURO_REQUIRED,
+  MURO_UNDECLARED,
   MURO_VERSION,
   UGATSU_VERSION,
   VERSION_LINE,
@@ -59,7 +54,7 @@ describe("koyuパッケージ", () => {
     const m = load("house.muro");
     expect(check(m).errors).toEqual([]);
     const site = siteReport(m);
-    expect(site.siteZone).toBeDefined();
+    expect(site.hasSite).toBe(true);
     expect(site.derivedArea).toBeCloseTo(site.declaredArea!, 2);
     expect(site.roads.length).toBe(1);
     expect(m.boundaries.some((b) => b.air)).toBe(true); // 手すり・柵 (air) を含む
@@ -82,8 +77,10 @@ describe("koyuパッケージ", () => {
   it("正準JSONと平面SVGがそのまま出せる", () => {
     const m = load("office.muro");
     const json = JSON.parse(toCanonical(m));
-    // 言語版は直書きしない — koyu の台帳 (ADR-0017) を参照し、版が上がれば追随する
-    expect(json.koyu).toBe(DEFAULT_LANGUAGE_VERSION);
+    // 正準形が名乗る鍵は **`muro`** である — 版を持つのは言語であって実装ではない
+    // (koyu ADR-0060。形式は koyu-canonical/2.0 へ上がった)。同梱例は最新版で書かれる
+    expect(json.format).toBe("koyu-canonical/2.0");
+    expect(json.muro).toBe(NEWEST_LANGUAGE_VERSION);
     expect(Object.keys(json.spaces).length).toBe(m.spaces.size);
     expect(svgPlan(m, { level: "L1" })).toContain("</svg>");
   });
@@ -170,7 +167,7 @@ describe("ショーケース (tower — 9レイヤー合成 + polygon敷地)", (
 
   it("3D: 壁は階高いっぱいに立ち上がる (天井高で止まらない)", () => {
     const m = parseFiles(loadTower(), "main.muro");
-    const colors = buildColors(m, "use");
+    const colors = buildColors(m, "type");
     const built = buildScene(formOf(m), {
       colors,
       stackMode: false,
@@ -205,11 +202,25 @@ describe("面積表 (MUN-144)", () => {
     expect(voidRow!.area).toBeUndefined();
   });
 
-  it("use別集計: オフィスのrentable+commonが全体を覆う", () => {
-    const m = load("office.muro");
-    const s = computeStats(m);
-    const covered = s.byUse.reduce((a, u) => a + u.area, 0);
-    expect(covered).toBeCloseTo(s.total, 1);
+  // muro 1.3 が `use` を廃した (koyu ADR-0061)。集計軸は原本に書かれた名前空間つきの鍵から
+  // 立ち、**バケツの合計は延べ面積に閉じる** — 鍵を持たない空間も「(未記載)」に入る。
+  // かつての `byUse` は鍵の無い空間を黙って落としており、合計が合うのは偶然だった
+  it("鍵別集計: どの鍵でもバケツの合計が延べ面積に一致する", () => {
+    for (const name of ["office.muro", "mansion.muro"]) {
+      const s = computeStats(load(name));
+      expect(s.byAttr.length).toBeGreaterThan(0);
+      for (const b of s.byAttr) {
+        expect(b.rows.reduce((a, r) => a + r.area, 0)).toBeCloseTo(s.total, 1);
+      }
+    }
+  });
+
+  it("集計軸は書かれた鍵だけ — 既定の軸を持たない (koyu ADR-0061 決定6)", () => {
+    // 名前空間の無い鍵 (h・daylight・name) は区分ではないので軸に立たない
+    expect(computeStats(load("mansion.muro")).keys).toEqual(["lease.category"]);
+    // 鍵を一つも書かない原本では、集計の表そのものが立たない
+    expect(computeStats(load("two-rooms.muro")).keys).toEqual([]);
+    expect(computeStats(load("two-rooms.muro")).byAttr).toEqual([]);
   });
 
   it("CSVに延べ面積とゾーンが載る", () => {
@@ -217,10 +228,11 @@ describe("面積表 (MUN-144)", () => {
     const csv = statsToCsv(computeStats(m), "テスト");
     expect(csv).toContain("延べ面積");
     expect(csv).toContain("/L2/A");
+    expect(csv).toContain("lease.category 別"); // 列も見出しも書かれた鍵から立つ
   });
 });
 
-// **ugatsu は意味を作らない** (koyu spec/scope.md §1)。母集団の判断は koyu の isIndoor が持ち、
+// **ugatsu は意味を作らない** (koyu docs/reference/scope.md)。母集団の判断は koyu の isIndoor が持ち、
 // ここは「同じ答えになること」だけを縛る。かつて ugatsu は「吹抜け以外はすべて床」と数え、
 // 外部と半屋外を延べ面積へ算入していた (ADR-0006)。
 describe("面積の母集団は koyu が決める (ADR-0006)", () => {
@@ -272,6 +284,38 @@ describe("面積の母集団は koyu が決める (ADR-0006)", () => {
     }
   });
 
+  // **型の位置から構造を読まない** (koyu ADR-0051 / muro 1.1 以降)。外部は `outside:1`、
+  // 吹抜けは `void:1` という宣言であり、型は自由で、書かなくてもよいラベルである。
+  // かつて ugatsu は `s.type === "exterior"` / `"void"` と書いていた — muro 1.3 で書かれた
+  // `space /out name:外部 outside:1` を、その二行は静かに「屋内」と数える
+  it("構造は宣言から読む — 型の語からではない (koyu ADR-0051)", () => {
+    const m = parse(
+      [
+        "muro 1.3",
+        "grid X 0 4000 8000",
+        "grid Y 0 5000",
+        "level L1 0 h:2400 slab:150",
+        "level L2 3000 h:2400 slab:150",
+        "space /L1/a room X1..X2 Y1..Y2 name:居室",
+        // 型は `room` のまま、宣言だけが外部と言う — 型を読む実装はこれを算入してしまう
+        "space /L1/yard room X2..X3 Y1..Y2 name:中庭 outside:1",
+        // 型を一つも書かない吹抜け — 型を読む実装はこれを床として算入してしまう
+        "space /L2/v X1..X2 Y1..Y2 level:L2 name:上部吹抜け void:1",
+      ].join("\n"),
+    );
+    const s = computeStats(m);
+    const rows = new Map(s.levels.flatMap((l) => l.rows).map((r) => [r.path, r]));
+    expect(rows.get("/L1/yard")!.cls).toBe("exterior");
+    expect(rows.get("/L2/v")!.cls).toBe("void");
+    expect(rows.get("/L2/v")!.type).toBeUndefined();
+    expect(rows.get("/L1/a")!.cls).toBe("indoor");
+    // 延べ面積は居室の一室だけ (4000×5000 = 20㎡)。中庭は別掲、吹抜けは面を持たない
+    expect(s.total).toBeCloseTo(20, 2);
+    expect(s.outdoorTotal).toBeCloseTo(20, 2);
+    // 型別の見出しも「書かれていない」を潰さない
+    expect(s.byType.map((t) => t.type)).toEqual(["room"]);
+  });
+
   it("敷地ゾーン (site:1) は建物の集約ではないので出さない", () => {
     const s = computeStats(layered("complex"));
     expect(s.zones.some((z) => z.path === "/site")).toBe(false);
@@ -287,8 +331,25 @@ describe("版の埋め込み (ADR-0006)", () => {
   it("三本の版がすべて名乗られる", () => {
     expect(UGATSU_VERSION).toMatch(/^\d+\.\d+\.\d+/);
     expect(KOYU_VERSION).toMatch(/^\d+\.\d+\.\d+/);
-    expect(MURO_VERSION).toBe(DEFAULT_LANGUAGE_VERSION);
+    // **muro は一点ではなく幅である。**名乗るのは読める最新版で、版行の無い原本の
+    // 読み方 (1.1 に凍っている) とは別の数である。かつてここは後者を「読める版」として
+    // 出しており、koyu が 1.3 まで読むようになっても 1.1 と名乗り続けていた
+    expect(MURO_VERSION).toBe(NEWEST_LANGUAGE_VERSION);
+    expect(MURO_UNDECLARED).toBe("1.1");
+    expect(MURO_VERSION).not.toBe(MURO_UNDECLARED);
+    expect(MURO_READS).toBe(`0.1–${MURO_VERSION}`);
     expect(VERSION_LINE).toContain(`koyu ${KOYU_VERSION}`);
+  });
+
+  // 依存しているのは言語の版であって、パッケージの範囲ではない (koyu の `requireMuro`)。
+  // 同梱の例はこの版で書かれているので、読めない koyu を掴んだビルドはここで落ちる
+  it("同梱の例が名乗る muro の版を、このビルドの koyu が読む", () => {
+    expect(() => assertMuro()).not.toThrow();
+    const sources = readdirSync("examples")
+      .filter((f) => f.endsWith(".muro"))
+      .map((f) => readFileSync(`examples/${f}`, "utf8"));
+    expect(sources.length).toBeGreaterThan(0);
+    for (const src of sources) expect(src).toContain(`muro ${MURO_REQUIRED}`);
   });
 
   it("焼き込まれた koyu の版が、実際に解決された実体と一致する", () => {
@@ -352,7 +413,7 @@ describe("シーン生成", () => {
 
   it("3D: 領域を持つ空間がすべてピック対象になり、壁メッシュが生まれる", () => {
     const m = load("office.muro");
-    const colors = buildColors(m, "use");
+    const colors = buildColors(m, "type");
     const built = buildScene(formOf(m), {
       colors,
       stackMode: false,
@@ -385,7 +446,7 @@ describe("シーン生成", () => {
 
   it("レベルを隠すとそのレベルの空間が消える", () => {
     const m = load("office.muro");
-    const colors = buildColors(m, "use");
+    const colors = buildColors(m, "type");
     const built = buildScene(formOf(m), {
       colors,
       stackMode: false,

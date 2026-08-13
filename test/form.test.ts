@@ -2,7 +2,7 @@
 //
 // ugatsu は参照実装と同じ形を作る。見た目の質はここに足すが、形は変えない。
 // その約束を機械が縛れるようになったのは koyu が `derive(model): Form` を立ててからで
-// ある (koyu ADR-0040 / spec/derivation.md)。ここが縛るのは五つ。
+// ある (koyu ADR-0040 / docs/reference/form)。ここが縛るのは五つ。
 //
 //   1. **形の出所が一つ** — 描画する頁が koyu の形の部品を直に呼ばない (import で縛る)
 //   2. **立体が Form と一致する** — 壁の区間・建具・柱・段板が、Form から組み直した
@@ -14,7 +14,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
-import { derive, parse, parseFiles, type Form, type Model } from "@kensnzk/koyu";
+import { parse, parseFiles } from "@kensnzk/koyu";
+import { derive, type Form } from "@kensnzk/koyu/form";
+import type { Model } from "@kensnzk/koyu/model";
 import { buildColors } from "../src/lib/colors.js";
 import { formOf } from "../src/lib/form.js";
 import { planFigure, type MarkRole } from "../src/lib/planFigure.js";
@@ -45,8 +47,13 @@ const CASES: Record<string, () => Model> = {
 // ---- 1. 形の出所が一つ -----------------------------------------------------
 
 /**
- * 形を組み立てる koyu の部品。**描く頁がこれを直に呼ぶと、同じ部品から違う形が出る余地が
- * 戻ってくる。**形は `formOf(model)` (= `derive`) からのみ来る
+ * 形を**組み立てる** koyu の部品。**描く頁がこれを直に呼ぶと、同じ部品から違う形が出る余地が
+ * 戻ってくる。**形は `formOf(model)` (= `derive`) からのみ来る。
+ *
+ * **実体の構成子はこの列に入らない。**`band` / `bandLine` / `thicken` / `columnRect` /
+ * `runPrism` は「芯線と厚みと z から実体を起こす」規則であり、koyu が唯一の実装として
+ * 公開している (koyu ADR-0058)。取り込まないことではなく、**書き写さないこと**が規律である —
+ * 下の「構成子は書き写さない」がそれを縛る
  */
 const SHAPE_PARTS = [
   "segmentsFor",
@@ -72,11 +79,19 @@ const DRAWING_PAGES = [
   "src/lib/planFigure.ts",
 ];
 
-/** そのファイルが `@kensnzk/koyu` から取り込んでいる名 (値も型も) */
+/**
+ * そのファイルが `@kensnzk/koyu` から取り込んでいる名 (値も型も)。
+ *
+ * **入口はもう一つではない。**koyu 0.21.0 で公開面は 12 のサブパスへ割れた (koyu ADR-0053)
+ * ので、`@kensnzk/koyu/form` も `/model` も同じように見る — 見なければ、形の部品が
+ * サブパス経由で描画の頁へ戻ってきても、この検査は黙って通る
+ */
 function koyuImports(file: string): string[] {
   const src = readFileSync(file, "utf8");
   const out: string[] = [];
-  for (const m of src.matchAll(/import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*"@kensnzk\/koyu"/g)) {
+  for (const m of src.matchAll(
+    /import\s+(?:type\s+)?\{([^}]*)\}\s*from\s*"@kensnzk\/koyu(?:\/[\w/]+)?"/g,
+  )) {
     for (const raw of m[1]!.split(",")) {
       const n = raw.replace(/^\s*type\s+/, "").trim().split(/\s+as\s+/)[0]!.trim();
       if (n) out.push(n);
@@ -98,12 +113,30 @@ describe("形の出所は一つである (koyu ADR-0040)", () => {
     });
   }
 
+  // koyu ADR-0058 — 構成子を書き写せば、同じ Form から違う形が出る余地がまた開く。
+  // 実際に開いていた: 平面は `band` を、立体は `bandLine` と `runPrism` を書き写していた
+  const CONSTRUCTOR_USERS: Record<string, string[]> = {
+    "src/lib/planFigure.ts": ["band"],
+    "src/three/buildScene.ts": ["bandLine", "runPrism"],
+  };
+  for (const [page, names] of Object.entries(CONSTRUCTOR_USERS)) {
+    it(`${page} は実体の構成子を書き写さず koyu から取る (${names.join(" / ")})`, () => {
+      const imported = koyuImports(page);
+      for (const n of names) expect(imported).toContain(n);
+      // 同じ名の関数をこの頁で定義していない (取り込んだうえで自前も持つ、が起こらない)
+      for (const n of names) {
+        expect(readFileSync(page, "utf8")).not.toMatch(new RegExp(`function\\s+${n}\\s*\\(`));
+      }
+    });
+  }
+
+  // **アプリの側で `derive` を呼ぶ頁は一つだけ**である。テストは `derive` を「答え合わせの
+  // 相手」として呼ぶので数に入らない — 入れれば、検算を足すたびにこの縛りを緩める羽目になる
   it("`derive` を取り込むのは src/lib/form.ts だけ (平面と立体が別の形を見ない)", () => {
-    const callers = ["src", "test"]
-      .flatMap((dir) => walk(dir))
+    const callers = walk("src")
       .filter((f) => /\.tsx?$/.test(f))
       .filter((f) => koyuImports(f).includes("derive"));
-    expect(callers.sort()).toEqual(["src/lib/form.ts", "test/form.test.ts"]);
+    expect(callers.sort()).toEqual(["src/lib/form.ts"]);
   });
 
   it("同じモデルからは同じ Form が返る (平面と立体が同じ実体を見る)", () => {
@@ -215,7 +248,7 @@ function actualBoxes(group: THREE.Group): string[] {
 
 const build = (m: Model, over: Partial<Parameters<typeof buildScene>[1]> = {}) =>
   buildScene(formOf(m), {
-    colors: buildColors(m, "use"),
+    colors: buildColors(m, "type"),
     stackMode: false,
     spread: 1,
     showWalls: true,
@@ -273,13 +306,18 @@ function expectedMarks(form: Form, level: string): Record<string, number> {
   const openings = new Map(form.openings.map((o) => [o.ref, o]));
   for (const e of plan?.entities ?? []) {
     if (e.of === "space" && e.class === "cut" && e.polygon) {
-      if (spaces.get(e.ref)?.type === "void") {
+      if (spaces.get(e.ref)?.void) {
         bump("space-void");
         bump("void-hatch");
       } else bump("space");
     } else if (e.of === "space" && e.class === "above" && e.polygon) bump("void-above");
-    else if (e.of === "boundary" && e.lines) bump("open");
-    else if (e.of === "boundary" && e.polygon) {
+    // **物があるかどうかを言うのは `polygon` の有無である。**区間は足あとと芯線の両方を
+    // 持って届くので (koyu ADR-0058)、`lines` の有無で分けるとすべての壁が「物を持たない
+    // 境界」に落ちる。かつてここは実装と同じ順で枝を書いており、**実装が壊れたときに
+    // 一緒に壊れて通った** — 期待値は Form の意味から書く
+    else if (e.of === "boundary" && !e.polygon) {
+      if (e.lines) bump("open");
+    } else if (e.of === "boundary") {
       if (e.class === "above") continue; // 垂れ壁 — 描かない
       if (boundaries.get(e.ref)?.air) bump("rail");
       else if (e.class === "cut") bump("wall");
@@ -326,6 +364,39 @@ describe("平面は Form の 2Dエンティティを取りこぼさない", () =
       }
     });
   }
+
+  // **数の一致だけでは足りなかった。**壁が一本残らず「開放的な分節」の破線として描かれても、
+  // 期待値が実装と同じ枝を書いていれば数は合う (実際に合っていた — koyu ADR-0058 で境界の
+  // エンティティが足あとと芯線の両方を持つようになったとき、平面から黒帯が全部消えた)。
+  // だからここは数ではなく、**物のある境界が物として描かれること**そのものを言う。
+  describe("材を持つ境界は帯として描かれる (破線に落ちない)", () => {
+    for (const [name, load] of Object.entries(CASES)) {
+      it(`${name}: 破線になるのは材を持たない境界だけである`, () => {
+        const form = formOf(load());
+        const air = new Map(form.boundaries.map((b) => [b.ref, b.air]));
+        let walls = 0;
+        for (const l of form.levels) {
+          const plan = form.plans.find((p) => p.level === l.name);
+          if (!plan) continue;
+          const bs = plan.entities.filter((e) => e.of === "boundary");
+          const n = (f: (e: (typeof bs)[number]) => boolean) => bs.filter(f).length;
+          const marks = planFigure(form, l.name);
+          const role = (r: MarkRole) => marks.filter((k) => k.role === r).length;
+
+          // **破線になるのは材を持たない境界だけ。**足あとを持つエンティティが一つでも
+          // ここへ落ちれば数が合わない — 壁が全部破線になっていたのがまさにこれである
+          expect(role("open")).toBe(n((e) => !e.polygon && !!e.lines));
+          // 黒帯 = 切断面が切った材 (遮蔽するもの)
+          expect(role("wall")).toBe(n((e) => e.class === "cut" && !!e.polygon && !air.get(e.ref)));
+          // 柵の線 = 遮蔽しない材。切断面より下でも見えがかりとして引く
+          expect(role("rail")).toBe(n((e) => e.class !== "above" && !!e.polygon && !!air.get(e.ref)));
+          walls += role("wall");
+        }
+        // 同梱例はどれも壁のある建物である — 母集団が空なら上の一致は何も言っていない
+        expect(walls).toBeGreaterThan(0);
+      });
+    }
+  });
 
   it("印は必ず Form の対象の同一性を持つ (どの空間・境界・開口の線かが言える)", () => {
     const form = formOf(layered("complex"));
@@ -380,12 +451,12 @@ describe("上部吹抜けの投影が平面に落ちる", () => {
 // 斜めの線分 (koyu ADR-0022 の描かれた線) の上の開口。かつては平面の帯も扉の軌跡も
 // 軸に沿った形で描かれ、3D の壁割りは斜めでは開口を抜かなかった (docs/scope.md §3.1)。
 // **同梱例には斜めの線分に書かれた開口が一件も無い**ので、ここで最小の例を立てる
-const DIAGONAL = `koyu 1.0
+const DIAGONAL = `muro 1.3
 grid X 0 8000
 grid Y 0 8000
 level L1 0 h:2700 slab:300
 space /L1/a room X1..X2 Y1..Y2
-space /out exterior
+space /out name:外部 outside:1
 boundary /L1/a /out t:200
   line X1,Y1+3000 X2,Y2
   door w:900
@@ -412,12 +483,12 @@ describe("斜め線分の上の開口も形になる", () => {
 
 // ---- 5. 決まらなければ形を作らない -----------------------------------------
 
-const UNDETERMINED = `koyu 1.0
+const UNDETERMINED = `muro 1.3
 grid X 0 4000
 grid Y 0 5000
 level L1 0 slab:300
 space /L1/a room X1..X2 Y1..Y2
-space /out exterior
+space /out name:外部 outside:1
 boundary /L1/a /out
 `;
 
