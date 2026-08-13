@@ -3,11 +3,11 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, type Plugin } from "vite";
 import { configDefaults } from "vitest/config";
 import { viteSingleFile } from "vite-plugin-singlefile";
-import { DEFAULT_LANGUAGE_VERSION } from "@kensnzk/koyu";
+import { NEWEST_LANGUAGE_VERSION } from "@kensnzk/koyu";
 
 const require = createRequire(import.meta.url);
 const UGATSU_VERSION: string = require("./package.json").version;
-// **実際に解決された koyu** の版を読む。package.json の範囲指定 (`^0.15.0`) ではなく、
+// **実際に解決された koyu** の版を読む。package.json の範囲指定 (`^0.21.0`) ではなく、
 // このビルドに焼き込まれた実体でなければ、埋め込んだ版が嘘になる (ADR-0005 のリンク時も同じ)
 const KOYU_VERSION: string = require("@kensnzk/koyu/package.json").version;
 
@@ -22,7 +22,10 @@ function stampVersions(): Plugin {
       return [
         { tag: "meta", attrs: { name: "ugatsu:version", content: UGATSU_VERSION }, injectTo: "head" },
         { tag: "meta", attrs: { name: "koyu:version", content: KOYU_VERSION }, injectTo: "head" },
-        { tag: "meta", attrs: { name: "muro:version", content: DEFAULT_LANGUAGE_VERSION }, injectTo: "head" },
+        // **読める最新の版**を刻む。かつてここは `DEFAULT_LANGUAGE_VERSION` (版行の無い
+        // 原本の読み方) だった。それは 1.1 に凍っているので、koyu が 1.3 まで読むようになっても
+        // 配布HTMLは「muro 1.1」と名乗り続けていた
+        { tag: "meta", attrs: { name: "muro:version", content: NEWEST_LANGUAGE_VERSION }, injectTo: "head" },
       ];
     },
   };

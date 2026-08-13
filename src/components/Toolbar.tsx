@@ -1,5 +1,8 @@
 import { useRef, useState } from "react";
-import { svgPlan, toCanonical } from "@kensnzk/koyu";
+// 書き出しの二つは別の契約から来る — 正準JSONは**凍る**面 (ルート)、SVGは
+// **凍らない**面 (`/draw`) である。同じ入力から同じ形は出るが、同じバイトは出ない (koyu ADR-0053)
+import { toCanonical } from "@kensnzk/koyu";
+import { svgPlan } from "@kensnzk/koyu/draw";
 import { EXAMPLES } from "../examples.js";
 import { downloadText, exportEmbeddedHtml } from "../lib/download.js";
 import { Button, Icon } from "../lib/ds.js";

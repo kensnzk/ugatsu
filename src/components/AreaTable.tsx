@@ -1,7 +1,10 @@
 // 面積表 — 「面積表に一行として現れてほしいか」が space のリトマス試験である以上、
 // この表は koyu の一次要素の一覧そのものになる (MUN-144)。
+//
+// 列は固定ではない。**集計軸はモデルに書かれた鍵から立つ** — muro 1.3 が `use` を廃し、
+// 「用途」という特権的な一列が消えた (koyu ADR-0061)。書かれていなければ列も立たない。
 import { useMemo } from "react";
-import { AREA_CLASS_LABEL, computeStats, statsToCsv } from "../lib/stats.js";
+import { AREA_CLASS_LABEL, computeStats, statsToCsv, UNTYPED_LABEL } from "../lib/stats.js";
 import { Button } from "../lib/ds.js";
 import { downloadText } from "../lib/download.js";
 import { routePaths, useViewer } from "../state/store.js";
@@ -42,30 +45,41 @@ export function AreaTable() {
             <th>パス</th>
             <th>名称</th>
             <th>型</th>
-            <th>用途</th>
+            {stats.keys.map((k) => (
+              <th key={k}>{k}</th>
+            ))}
             <th className="num">面積</th>
             <th>区分</th>
           </tr>
         </thead>
         <tbody>
           {stats.levels.map((lb) => (
-            <LevelRows key={lb.level} lb={lb} selected={selected} onRoute={onRoute} select={select} />
+            <LevelRows
+              key={lb.level}
+              lb={lb}
+              keys={stats.keys}
+              selected={selected}
+              onRoute={onRoute}
+              select={select}
+            />
           ))}
           <tr className="total-row">
-            <td colSpan={5}>延べ面積 (屋内床面積)</td>
+            <td colSpan={4 + stats.keys.length}>延べ面積 (屋内床面積)</td>
             <td className="num">{stats.total.toFixed(2)}</td>
             <td />
           </tr>
           {stats.outdoorTotal > 0 && (
             <tr className="aside-row">
-              <td colSpan={5}>屋外 — 広場・空地等 (床面積に算入しない)</td>
+              <td colSpan={4 + stats.keys.length}>屋外 — 広場・空地等 (床面積に算入しない)</td>
               <td className="num">{stats.outdoorTotal.toFixed(2)}</td>
               <td />
             </tr>
           )}
           {stats.semiTotal > 0 && (
             <tr className="aside-row">
-              <td colSpan={5}>半屋外 — バルコニー・屋外階段等 (算入条件は法規細部のため別掲)</td>
+              <td colSpan={4 + stats.keys.length}>
+                半屋外 — バルコニー・屋外階段等 (算入条件は法規細部のため別掲)
+              </td>
               <td className="num">{stats.semiTotal.toFixed(2)}</td>
               <td />
             </tr>
@@ -81,7 +95,9 @@ export function AreaTable() {
               <tr>
                 <th>パス</th>
                 <th>名称</th>
-                <th>用途</th>
+                {stats.keys.map((k) => (
+                  <th key={k}>{k}</th>
+                ))}
                 <th className="num">面積</th>
               </tr>
             </thead>
@@ -90,7 +106,9 @@ export function AreaTable() {
                 <tr key={z.path}>
                   <td className="path">{z.path}</td>
                   <td>{z.name}</td>
-                  <td>{z.use ?? ""}</td>
+                  {stats.keys.map((k) => (
+                    <td key={k}>{z.carried[k] ?? ""}</td>
+                  ))}
                   <td className="num">{z.area.toFixed(2)}</td>
                 </tr>
               ))}
@@ -100,22 +118,24 @@ export function AreaTable() {
       )}
 
       <div className="summary-grid">
-        {stats.byUse.length > 0 && (
-          <div>
-            <h3>用途別</h3>
+        {/* 鍵ごとの集計。**バケツの合計は延べ面積に閉じる** — その鍵を持たない空間も
+            「(未記載)」として一つのバケツになる (koyu ADR-0061 決定6) */}
+        {stats.byAttr.map((b) => (
+          <div key={b.key}>
+            <h3>{b.key} 別</h3>
             <table>
               <tbody>
-                {stats.byUse.map((u) => (
-                  <tr key={u.use}>
-                    <td>{u.use}</td>
-                    <td className="num">{u.area.toFixed(2)}</td>
-                    <td className="num muted">{u.pct.toFixed(1)}%</td>
+                {b.rows.map((r) => (
+                  <tr key={r.value}>
+                    <td>{r.value}</td>
+                    <td className="num">{r.area.toFixed(2)}</td>
+                    <td className="num muted">{r.pct.toFixed(1)}%</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        )}
+        ))}
         <div>
           <h3>型別</h3>
           <table>
@@ -159,11 +179,13 @@ export function AreaTable() {
 
 function LevelRows({
   lb,
+  keys,
   selected,
   onRoute,
   select,
 }: {
   lb: ReturnType<typeof computeStats>["levels"][number];
+  keys: string[];
   selected: string | null;
   onRoute: Set<string>;
   select: (p: string | null) => void;
@@ -181,14 +203,16 @@ function LevelRows({
           <td>{i === 0 ? lb.level : ""}</td>
           <td className="path">{r.path}</td>
           <td>{r.name}</td>
-          <td>{r.type}</td>
-          <td>{r.use ?? ""}</td>
+          <td>{r.type ?? <span className="muted">{UNTYPED_LABEL}</span>}</td>
+          {keys.map((k) => (
+            <td key={k}>{r.carried[k] ?? ""}</td>
+          ))}
           <td className="num">{r.area?.toFixed(2) ?? "–"}</td>
           <td className="muted">{AREA_CLASS_LABEL[r.cls]}</td>
         </tr>
       ))}
       <tr className="subtotal-row">
-        <td colSpan={5}>{lb.level} 小計 (屋内)</td>
+        <td colSpan={4 + keys.length}>{lb.level} 小計 (屋内)</td>
         <td className="num">{lb.subtotal.toFixed(2)}</td>
         <td />
       </tr>

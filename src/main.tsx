@@ -5,9 +5,15 @@ import { createRoot } from "react-dom/client";
 import { App } from "./components/App.js";
 import { DEFAULT_EXAMPLE } from "./examples.js";
 import { capturePristineHtml, decodeBase64 } from "./lib/download.js";
+import { assertMuro } from "./lib/versions.js";
 import { useViewer } from "./state/store.js";
 
 import { applyTheme } from "./lib/theme.js";
+
+// **依存しているのは言語の版であって、パッケージの範囲ではない** (koyu の `requireMuro`)。
+// 同梱の例は muro 1.3 で書かれているので、それを読まない koyu を掴んだビルドは壊れている —
+// 最初の解析エラーではなく、ここで直し方を名乗って落ちる
+assertMuro();
 
 // 配布用HTMLの自己複製のため、Reactがマウントする前の素のHTMLを確保する
 capturePristineHtml();

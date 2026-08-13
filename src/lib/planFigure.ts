@@ -2,23 +2,23 @@
 //
 // 形の規則はここに一つも無い。壁の厚みも、開口で割られた区間も、扉の軌跡の中心と半径と
 // 掃き方向も、階段がどこで切れるかも、上部吹抜けの投影も、koyu の `derive(model)` が返す
-// `Form` に既に入っている (koyu ADR-0040 / spec/derivation.md)。
+// `Form` に既に入っている (koyu ADR-0040 / docs/reference/form)。
 //
 // ここが決めるのは**見た目**である — 何を引き、何を省き、どの線を太くし、どの言葉を注記に
-// 置くか。`Form` は色も線種も注記の言葉も持たない (koyu spec/scope.md §6) ので、"UP" も
+// 置くか。`Form` は色も線種も注記の言葉も持たない (koyu docs/reference/scope.md) ので、"UP" も
 // 「上部吹抜け」も、この頁で初めて生まれる。
 //
 // **平面は純粋な断面ではない。**扉の軌跡・上部吹抜けの投影・切断線・下りる走りは、立体を
 // どれだけ正確に切っても出てこない。だから Form は平面を分類つきのエンティティ集合として
 // 渡し、この頁はその分類 (cut / below / above / swing / anchor) を読む。
-import {
-  polyBounds,
-  slopeText,
-  type Form,
-  type FormOpening,
-  type Pt,
-  type Seg2,
-} from "@kensnzk/koyu";
+//
+// **帯を厚みのある四辺形へ起こす式は koyu が持つ。**`Form` が持つのは芯線と厚みと z であり、
+// そこから実体を組む規則も導出の一部なので唯一の実装が koyu にある (koyu ADR-0058)。
+// かつてこの頁は同じ式を書き写していた — 「壁厚 100mm が四箇所に別々のリテラルとして
+// 書かれていた」のと同じ壊れ方である。
+import { band, type Form, type FormOpening, type Seg2 } from "@kensnzk/koyu/form";
+import type { Pt } from "@kensnzk/koyu/model";
+import { polyBounds, slopeText } from "./koyu-compat.js";
 
 /** 印の役 — 線の太さも色も PlanView が役から決める */
 export type MarkRole =
@@ -106,7 +106,9 @@ export function planFigure(form: Form, level: string): Mark[] {
   for (const e of plan.entities) {
     if (e.of !== "space" || e.class !== "cut" || !e.polygon) continue;
     const s = spaces.get(e.ref);
-    if (s?.type === "void") {
+    // 吹抜けかどうかは**宣言** (`void:1`) であって型の語ではない (koyu ADR-0051 / muro 1.1)。
+    // `Form` はその事実を `FormSpace.void` として持って届く
+    if (s?.void) {
       const r = polyBounds(e.polygon);
       marks.push({ role: "space-void", ref: e.ref, polygon: e.polygon });
       marks.push({
@@ -128,20 +130,26 @@ export function planFigure(form: Form, level: string): Mark[] {
   }
 
   // ---- 境界 ----
-  // 物を持たない境界 (open) は線だけ。物があるなら**開口で割られた区間**が来るので、
-  // 「黒帯を紙の色で塗り潰して穴に見せる」欠き取りは要らない (koyu ADR-0040)
+  // 物があるなら**開口で割られた区間**が来るので、「黒帯を紙の色で塗り潰して穴に見せる」
+  // 欠き取りは要らない (koyu ADR-0040)。
+  //
+  // **物があるかどうかを言うのは `polygon` の有無である。**区間は足あと (厚みのある四辺形) と
+  // 芯線の**両方**を持って届き、どちらで描くかは見た目の判断として消費者に残されている
+  // (koyu ADR-0058)。だから `lines` を先に見てはならない — 見れば壁がすべて「物を持たない
+  // 境界」の枝へ落ち、**黒帯が一本も出ないまま破線の細線になる**。実際にそうなっていた。
   for (const e of plan.entities) {
     if (e.of !== "boundary") continue;
     const b = boundaries.get(e.ref);
-    if (e.lines) {
-      marks.push({ role: "open", ref: e.ref, lines: e.lines });
+    if (!e.polygon) {
+      // 物を持たない境界 (open) — 芯線だけが来る
+      if (e.lines) marks.push({ role: "open", ref: e.ref, lines: e.lines });
       continue;
     }
-    if (!e.polygon) continue;
     if (e.class === "above") continue; // 垂れ壁 — 切断面より上
     if (b?.air) {
-      // 遮蔽しない物: 厚みを持たない一本の細実線で描く (囲われていないことが図から読める)
-      marks.push({ role: "rail", ref: e.ref, lines: [centreline(e.polygon)] });
+      // 遮蔽しない物: 厚みではなく一本の細実線で描く (囲われていないことが図から読める)。
+      // 芯線は Form が持っているので、足あとから割り戻さない
+      if (e.lines) marks.push({ role: "rail", ref: e.ref, lines: e.lines });
       continue;
     }
     if (DROPPED_BOUNDARY_CLASSES.has(e.class)) continue; // 腰壁 — 開口の下
@@ -246,26 +254,5 @@ const unit = (from: Pt, to: Pt, len: number): Pt => ({
   y: (to.y - from.y) / (len || 1),
 });
 
-/** 帯 (seg) を厚みのある四辺形へ — 斜めの線分でもそのまま効く */
-function band(seg: Seg2, cx: number, cy: number, w: number, t: number): Pt[] {
-  const dx = seg.x2 - seg.x1;
-  const dy = seg.y2 - seg.y1;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = (dx / len) * (w / 2);
-  const uy = (dy / len) * (w / 2);
-  const nx = (-dy / len) * (t / 2);
-  const ny = (dx / len) * (t / 2);
-  return [
-    { x: cx - ux + nx, y: cy - uy + ny },
-    { x: cx + ux + nx, y: cy + uy + ny },
-    { x: cx + ux - nx, y: cy + uy - ny },
-    { x: cx - ux - nx, y: cy - uy - ny },
-  ];
-}
-
-/** 厚みのある四辺形の芯線 (手すりを一本の細実線で描くため) */
-function centreline(q: Pt[]): Seg2 {
-  const a = { x: (q[0]!.x + q[3]!.x) / 2, y: (q[0]!.y + q[3]!.y) / 2 };
-  const b = { x: (q[1]!.x + q[2]!.x) / 2, y: (q[1]!.y + q[2]!.y) / 2 };
-  return { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
-}
+// **芯線を足あとから割り戻す関数はもう無い。**`Form` の境界エンティティが芯線を
+// そのまま持って届くので (koyu ADR-0058)、四辺形の頂点から中点を取り直す必要がない。

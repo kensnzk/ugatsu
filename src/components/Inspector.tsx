@@ -3,13 +3,16 @@ import { useMemo } from "react";
 import {
   areaM2,
   displayName,
-  effectiveUse,
+  effectiveAttr,
   heff,
   isSemiOutdoor,
-  siteReport,
-} from "@kensnzk/koyu";
+  isVoid,
+} from "@kensnzk/koyu/model";
+import { carriedKeys } from "../lib/colors.js";
 import { Icon, Select } from "../lib/ds.js";
-import { KOYU_VERSION, MURO_VERSION, UGATSU_VERSION } from "../lib/versions.js";
+import { siteReport } from "../lib/koyu-compat.js";
+import { UNTYPED_LABEL } from "../lib/stats.js";
+import { KOYU_VERSION, MURO_READS, MURO_UNDECLARED, MURO_VERSION, UGATSU_VERSION } from "../lib/versions.js";
 import { useViewer } from "../state/store.js";
 
 const NONE = "";
@@ -57,13 +60,17 @@ export function Inspector() {
               <td>ゾーン</td>
               <td>{model.zones.size}</td>
             </tr>
-            {/* 版 — 「どの版の形を見ているか」を利用者が言えるようにする (ADR-0006) */}
+            {/* 版 — 「どの版の形を見ているか」を利用者が言えるようにする (ADR-0006)。
+                muro は一点ではなく**幅**である: 読める範囲・最新・版行の無い原本の読み方。
+                版行を書かない原本は 1.1 として読まれ、それは新しい記法へは動かない */}
             <tr>
               <td>版</td>
-              <td className="version-cell">
+              <td className="version-cell" title={`muro ${MURO_READS} を読む`}>
                 ugatsu {UGATSU_VERSION}
                 <br />
                 koyu {KOYU_VERSION} ・ muro {MURO_VERSION}
+                <br />
+                <span className="muted">版行の無い原本は muro {MURO_UNDECLARED} として読む</span>
               </td>
             </tr>
             <tr>
@@ -83,7 +90,7 @@ export function Inspector() {
             </tr>
           </tbody>
         </table>
-        {site.siteZone && (
+        {site.hasSite && (
           <>
             <h3>敷地 — 構成からの導出</h3>
             <table className="kv">
@@ -105,11 +112,11 @@ export function Inspector() {
                   <td>延べ面積</td>
                   <td>{site.totalFloor.toFixed(2)} ㎡</td>
                 </tr>
-                {site.roads.map((r, i) => (
-                  <tr key={i}>
+                {site.roads.map((r) => (
+                  <tr key={r.path}>
                     <td>接道</td>
                     <td>
-                      {displayName(r.road)} 幅員{(r.width / 1000).toFixed(1)}m ・ 接道長{" "}
+                      {r.name} 幅員{(r.width / 1000).toFixed(1)}m ・ 接道長{" "}
                       {(r.frontage / 1000).toFixed(1)}m
                     </td>
                   </tr>
@@ -129,9 +136,14 @@ export function Inspector() {
     );
   }
 
-  const use = effectiveUse(model, space);
   const h = heff(model, space);
   const attrs = Object.entries(space.attrs).filter(([k]) => k !== "name");
+  // ゾーンから継いだ区分 — 自分では書いていないが、問えば答えが返る鍵。
+  // **鍵を名乗るのは呼ぶ側**であり、koyu はその意味を作らない (koyu ADR-0061 決定7)
+  const inherited = carriedKeys(model)
+    .filter((k) => space.attrs[k] === undefined)
+    .map((k) => [k, effectiveAttr(model, space, k)] as const)
+    .filter((e): e is readonly [string, NonNullable<(typeof e)[1]>] => e[1] !== undefined);
 
   return (
     <aside className="inspector">
@@ -139,9 +151,10 @@ export function Inspector() {
       <div className="path sel-path">{space.path}</div>
       <table className="kv">
         <tbody>
+          {/* 型 = 室の目的 (koyu ADR-0061 決定1)。**書かれないことがある** */}
           <tr>
             <td>型</td>
-            <td>{space.type}</td>
+            <td>{space.type ?? <span className="muted">{UNTYPED_LABEL}</span>}</td>
           </tr>
           {space.level && (
             <tr>
@@ -153,7 +166,7 @@ export function Inspector() {
           )}
           <tr>
             <td>面積</td>
-            <td>{space.type === "void" ? "吹抜け (不算入)" : `${areaM2(space)?.toFixed(2) ?? "–"} ㎡`}</td>
+            <td>{isVoid(space) ? "吹抜け (不算入)" : `${areaM2(space)?.toFixed(2) ?? "–"} ㎡`}</td>
           </tr>
           {isSemiOutdoor(model, space) && (
             <tr>
@@ -167,12 +180,14 @@ export function Inspector() {
               <td>{h} mm</td>
             </tr>
           )}
-          {use && (
-            <tr>
-              <td>用途 (実効)</td>
-              <td>{use}</td>
+          {inherited.map(([k, v]) => (
+            <tr key={`inh-${k}`}>
+              <td>
+                {k} <span className="muted">(継承)</span>
+              </td>
+              <td>{String(v)}</td>
             </tr>
-          )}
+          ))}
           {space.rects.length > 1 && (
             <tr>
               <td>領域</td>
