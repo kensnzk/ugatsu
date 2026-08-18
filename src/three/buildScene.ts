@@ -314,8 +314,10 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
         if (stackMode || opts.showFabric === false || !node.solid) continue;
         const level = levelOfSpace.get(node.ref);
         if (levelHidden(level)) continue;
-        const mat = slabMats[node.kind ?? ""];
-        if (!mat) continue;
+        // **知らない種別を黙って落とさない。**koyu が SlabKind を増やした日、`continue` すると
+        // その版だけが立体から消え、何も言わない — この頁が無くそうとしている失敗そのものである。
+        // 既定の材で立てておけば、見た目で気づける
+        const mat = slabMats[node.kind ?? ""] ?? slabMats["floor"]!;
         at(level).add(prismMesh(node.solid.ring, node.solid.bottom[0]!, node.solid.top[0]!, mat));
         break;
       }

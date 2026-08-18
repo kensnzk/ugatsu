@@ -134,6 +134,23 @@ describe("形の出所は一つである (koyu ADR-0040)", () => {
   // 「平面には出て立体には出ない」が黙って起こる — かつてそう作られていた
   it("src/three/buildScene.ts は立体の数え上げを `sceneOf` から取る", () => {
     expect(koyuImports("src/three/buildScene.ts")).toContain("sceneOf");
+    // import しているだけでは縛りにならない。**実体の配列を直接歩いていないこと**まで見る —
+    // 七つ目の巡回を明日書き足しても import は変わらないので、それだけでは通ってしまう。
+    //
+    // `form.spaces` だけは除く。面 (床・天井・屋根) の節が階を持たない (koyu 0.24) ので、
+    // 空間のパスから階を引き直している — 実体を数えているのではなく、書かれた所属を引く
+    // 表であり、koyu が面に階を載せた日に消える三行である
+    // 説明の文からは拾わない。この頁の冒頭は「かつて六つの巡回で歩いていた」と
+    // 書いてあり、コメントごと見れば自分の来歴で落ちる
+    const src = readFileSync("src/three/buildScene.ts", "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .filter((l) => !l.trimStart().startsWith("//"))
+      .join("\n");
+    const walked = ["columns", "runs", "slabs", "site", "boundaries", "openings"].filter((a) =>
+      new RegExp(`\\bform\\.${a}\\b`).test(src),
+    );
+    expect(walked).toEqual([]);
   });
 
   // **アプリの側で `derive` を呼ぶ頁は一つだけ**である。テストは `derive` を「答え合わせの

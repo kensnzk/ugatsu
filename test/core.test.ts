@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { check, NEWEST_LANGUAGE_VERSION, parse, parseFiles, toCanonical } from "@kensnzk/koyu";
-import { svgPlan } from "@kensnzk/koyu/draw";
+import { sceneOf, svgPlan } from "@kensnzk/koyu/draw";
 import { doorsBetween, segmentsFor } from "@kensnzk/koyu/graph";
 import { areaM2, isIndoor, zoneAreaM2 } from "@kensnzk/koyu/model";
 import { buildColors } from "../src/lib/colors.js";
@@ -509,4 +509,32 @@ describe("シーン生成", () => {
     const hasL2 = built.pickables.some((p) => (p.userData.path as string).startsWith("/L2/"));
     expect(hasL2).toBe(false);
   });
+});
+
+describe("敷地は地面に接する階に載る (koyu 0.24 の scene.ground)", () => {
+  const layered = (dir: string, entry = "main.muro") => {
+    const files = Object.fromEntries(
+      readdirSync(`examples/${dir}`)
+        .filter((f) => f.endsWith(".muro"))
+        .map((f) => [f, readFileSync(`examples/${dir}/${f}`, "utf8")]),
+    );
+    return parseFiles(files, entry);
+  };
+
+  // 敷地境界線を最下階の平面に引くと、地下のある建物では地下の図に現れる。
+  // **どの例でそれが起きるかを固定しておく** — 起きない例だけで確かめても、直したことに
+  // ならない (敷地形状を持たない例では、そもそも線が引かれない)
+  for (const name of ["complex", "twin"]) {
+    it(`${name}: 最下階と地面に接する階が食い違う`, () => {
+      const form = formOf(layered(name));
+      expect(form.site.length).toBeGreaterThan(0);
+      const scene = sceneOf(form);
+      expect(scene.ground).toBeDefined();
+      expect(scene.ground).not.toBe(form.levels[0]!.name);
+      // 地面に接する階は 0 以上で最も低い階である
+      const ground = form.levels.find((l) => l.name === scene.ground)!;
+      expect(ground.z).toBeGreaterThanOrEqual(0);
+      for (const l of form.levels) if (l.z >= 0) expect(l.z).toBeGreaterThanOrEqual(ground.z);
+    });
+  }
 });
