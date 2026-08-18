@@ -1,8 +1,9 @@
 // @kensnzk/koyu が期待どおり答えること・ビューワーの集計とシーン生成の検算
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import * as THREE from "three";
 import { check, NEWEST_LANGUAGE_VERSION, parse, parseFiles, toCanonical } from "@kensnzk/koyu";
-import { svgPlan } from "@kensnzk/koyu/draw";
+import { sceneOf, svgPlan } from "@kensnzk/koyu/draw";
 import { doorsBetween, segmentsFor } from "@kensnzk/koyu/graph";
 import { areaM2, isIndoor, zoneAreaM2 } from "@kensnzk/koyu/model";
 import { buildColors } from "../src/lib/colors.js";
@@ -179,16 +180,23 @@ describe("ショーケース (tower — 9レイヤー合成 + polygon敷地)", (
     // **壁は箱ではなく足あとの押し出しである** (koyu ADR-0063)。拾うのは
     // ExtrudeGeometry の下端 (position.y = z0) と伸ばした高さ (depth) — 空間の気積は
     // userData.path を持ち、床と天井は L5 のFLからは始まらないので、この二つで壁だけが残る
-    const l5 = built.group.children
-      .filter(
-        (o): o is import("three").Mesh =>
-          (o as import("three").Mesh).isMesh === true &&
-          ((o as import("three").Mesh).geometry as { type?: string }).type === "ExtrudeGeometry" &&
-          !(o as import("three").Mesh).userData.path,
-      )
+    // **立体はレベルごとの入れ物に入る** — 2.5D の展開がその入れ物の変位だからである。
+    // 直下の子を見るのではなく、木を辿る
+    const walls: THREE.Mesh[] = [];
+    built.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (
+        mesh.isMesh === true &&
+        (mesh.geometry as { type?: string }).type === "ExtrudeGeometry" &&
+        !mesh.userData.path
+      ) {
+        walls.push(mesh);
+      }
+    });
+    const l5 = walls
       .map((mesh) => ({
         z0: mesh.position.y,
-        h: (mesh.geometry as import("three").ExtrudeGeometry).parameters.options.depth as number,
+        h: (mesh.geometry as THREE.ExtrudeGeometry).parameters.options.depth as number,
       }))
       .filter((p) => Math.abs(p.z0 - 14000) < 1);
     // L5 (z=14000) の階高は3000。天井高で止まっていれば、ここに 3000 の壁は無い
@@ -433,7 +441,13 @@ describe("シーン生成", () => {
       .filter((s) => s.rects.length > 0 && s.level)
       .reduce((a, s) => a + s.rects.length, 0);
     expect(built.pickables.length).toBe(rectCount);
-    expect(built.group.children.length).toBeGreaterThan(rectCount);
+    // 気積の数より多くの網が立つ (= 壁が生まれている)。レベルごとの入れ物に入るので、
+    // 直下の子ではなく木の中の網を数える
+    let meshes = 0;
+    built.group.traverse((o) => {
+      if ((o as THREE.Mesh).isMesh) meshes++;
+    });
+    expect(meshes).toBeGreaterThan(rectCount);
   });
 
   it("2.5D: 吹抜けにはプレートを置かない (床の不在)", () => {
@@ -451,6 +465,36 @@ describe("シーン生成", () => {
     expect(voidPicked).toBe(false);
   });
 
+  // **展開は入れ物の変位であって、立体の座標ではない。**かつては z に係数を掛けて
+  // 一つ一つの網へ焼き込んでおり、「Form の座標のまま立っているか」を問えなかった。
+  // koyu の節が持つ z は常に真の世界 z なので、掛け算はレベルの入れ物にだけ掛かる
+  it("2.5D: 展開はレベルの入れ物の変位である (網の座標は真の z のまま)", () => {
+    const m = load("office.muro");
+    const form = formOf(m);
+    const levelOf = new Map(form.spaces.map((sp) => [sp.path, sp.level]));
+    const levelZ = new Map(form.levels.map((l) => [l.name, l.z]));
+    const spread = 2;
+    const built = buildScene(form, {
+      colors: buildColors(m, "level"),
+      stackMode: true,
+      spread,
+      showWalls: true,
+      showOpenings: true,
+      hiddenLevels: {},
+    });
+    built.group.updateMatrixWorld(true);
+    const at = new THREE.Vector3();
+    expect(built.pickables.length).toBeGreaterThan(0);
+    for (const plate of built.pickables) {
+      const z = levelZ.get(levelOf.get(plate.userData.path as string)!)!;
+      // 網そのものは真の z に居る
+      expect(plate.position.y).toBeCloseTo(z, 6);
+      // 世界では z*展開 へ持ち上がる (mm→m の 0.001 は根の縮尺)
+      plate.getWorldPosition(at);
+      expect(at.y).toBeCloseTo(z * spread * 0.001, 6);
+    }
+  });
+
   it("レベルを隠すとそのレベルの空間が消える", () => {
     const m = load("office.muro");
     const colors = buildColors(m, "type");
@@ -465,4 +509,32 @@ describe("シーン生成", () => {
     const hasL2 = built.pickables.some((p) => (p.userData.path as string).startsWith("/L2/"));
     expect(hasL2).toBe(false);
   });
+});
+
+describe("敷地は地面に接する階に載る (koyu 0.24 の scene.ground)", () => {
+  const layered = (dir: string, entry = "main.muro") => {
+    const files = Object.fromEntries(
+      readdirSync(`examples/${dir}`)
+        .filter((f) => f.endsWith(".muro"))
+        .map((f) => [f, readFileSync(`examples/${dir}/${f}`, "utf8")]),
+    );
+    return parseFiles(files, entry);
+  };
+
+  // 敷地境界線を最下階の平面に引くと、地下のある建物では地下の図に現れる。
+  // **どの例でそれが起きるかを固定しておく** — 起きない例だけで確かめても、直したことに
+  // ならない (敷地形状を持たない例では、そもそも線が引かれない)
+  for (const name of ["complex", "twin"]) {
+    it(`${name}: 最下階と地面に接する階が食い違う`, () => {
+      const form = formOf(layered(name));
+      expect(form.site.length).toBeGreaterThan(0);
+      const scene = sceneOf(form);
+      expect(scene.ground).toBeDefined();
+      expect(scene.ground).not.toBe(form.levels[0]!.name);
+      // 地面に接する階は 0 以上で最も低い階である
+      const ground = form.levels.find((l) => l.name === scene.ground)!;
+      expect(ground.z).toBeGreaterThanOrEqual(0);
+      for (const l of form.levels) if (l.z >= 0) expect(l.z).toBeGreaterThanOrEqual(ground.z);
+    });
+  }
 });
