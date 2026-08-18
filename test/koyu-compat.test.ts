@@ -11,14 +11,10 @@ import { describe, expect, it } from "vitest";
 import { checkDiagnostics, parse, parseFiles, toCanonical } from "@kensnzk/koyu";
 import { derive } from "@kensnzk/koyu/form";
 import type { Model } from "@kensnzk/koyu/model";
-import {
-  canonicalBoundaryOrder,
-  compareCanonical,
-  polyBounds,
-  polygonAreaM2,
-  siteReport,
-  slopeText,
-} from "../src/lib/koyu-compat.js";
+import { writtenOf } from "@kensnzk/koyu/draw";
+import { glassSpec } from "../src/lib/written.js";
+import { polyBounds, polygonAreaM2, siteReport } from "../src/lib/koyu-compat.js";
+import { slopeText } from "../src/lib/planWords.js";
 
 const layered = (dir: string, entry = "main.muro"): Model =>
   parseFiles(
@@ -42,42 +38,30 @@ const CASES: Record<string, () => Model> = {
   twin: () => layered("twin"),
 };
 
-describe("境界の正準順は koyu と同じである (koyu ADR-0041)", () => {
-  for (const [name, load] of Object.entries(CASES)) {
-    // 正準JSON は既定境界 (derived) を出さないので、そこを除いた並びが一致するはずである。
-    // **これが比較の芯である** — 並べ替えの鍵 (`canonicalBoundaryEntry`) も比較子
-    // (`compareCanonical`) も、ずれれば並びに出る
-    it(`${name}: 宣言された境界の並びが toCanonical と一致する`, () => {
-      const m = load();
-      const canonical = JSON.parse(toCanonical(m)).boundaries as unknown[];
-      const mine = canonicalBoundaryOrder(m)
-        .filter((b) => !b.derived)
-        .map((b) => ({ between: [b.a, b.b].sort(compareCanonical), a: b.a, kind: b.kind }));
-      expect(mine.length).toBe(canonical.length);
-      expect(mine).toEqual(
-        canonical.map((e) => {
-          const o = e as { between: string[]; a: string; kind: string };
-          return { between: o.between, a: o.a, kind: o.kind };
-        }),
-      );
-    });
-
-    // `FormBoundary.ref` は `<a>|<b>@<正準順の索引>` である (koyu ADR-0041 決定5)。
-    // 索引を宣言順に当てると静かに別の境界を指す — 既定境界を含む並びまで縛る
-    it(`${name}: derive が振った索引がこの並びを指す`, () => {
-      const m = load();
-      const ordered = canonicalBoundaryOrder(m);
-      const form = derive(m);
-      expect(form.boundaries.length).toBeGreaterThan(0);
-      for (const fb of form.boundaries) {
-        expect(fb.ref).toBe(`${fb.a}|${fb.b}@${fb.boundary}`);
-        const b = ordered[fb.boundary];
-        expect(b).toBeDefined();
-        // `Boundary.derived` は宣言された境界では未定義、`FormBoundary.derived` は真偽である
-        expect([b!.a, b!.b, b!.kind, !!b!.derived]).toEqual([fb.a, fb.b, fb.kind, fb.derived]);
-      }
-    });
-  }
+describe("自由語の意味を決める一点 — glassSpec (docs/scope.md §5.2)", () => {
+  // 索引から原本へ戻る道そのものは koyu 0.24 の `writtenOf` が持つ。並びが一つずれても
+  // 例外は出ず別の壁の語を読むだけなので、koyu 側に試験がある (test/marks.test.ts)。
+  // ここが確かめるのは ugatsu にしか無いもの — **語を読んで透過に落とす判断**が端から端で
+  // 効くことである
+  it("complex: カーテンウォールと書かれた境界だけが透過になる", () => {
+    const m = layered("complex");
+    const form = derive(m);
+    const isGlass = glassSpec(m);
+    const glass = form.boundaries.filter((b) => isGlass(b));
+    expect(glass.length).toBeGreaterThan(0);
+    // 透過になった境界の語は、実際に硝子を言う語である
+    const written = writtenOf(m);
+    for (const b of glass) {
+      expect(written.boundarySpec(b.boundary)).toMatch(/カーテンウォール|ガラス|サッシ|glass/i);
+    }
+    // 硝子でない語 (RC など) を透過にしていない
+    const opaque = form.boundaries.filter((b) => !isGlass(b));
+    expect(opaque.length).toBeGreaterThan(0);
+    for (const b of opaque) {
+      const v = written.boundarySpec(b.boundary);
+      if (v !== undefined) expect(v).not.toMatch(/カーテンウォール|ガラス|サッシ|glass/i);
+    }
+  });
 });
 
 describe("小さな幾何が koyu の導出と同じ数を返す", () => {
