@@ -114,20 +114,27 @@ describe("形の出所は一つである (koyu ADR-0040)", () => {
   }
 
   // koyu ADR-0058 — 構成子を書き写せば、同じ Form から違う形が出る余地がまた開く。
-  // 実際に開いていた: 平面は `band` を、立体は `bandLine` と `runPrism` を書き写していた
-  const CONSTRUCTOR_USERS: Record<string, string[]> = {
-    "src/three/buildScene.ts": ["bandLine", "runPrism"],
-  };
-  for (const [page, names] of Object.entries(CONSTRUCTOR_USERS)) {
-    it(`${page} は実体の構成子を書き写さず koyu から取る (${names.join(" / ")})`, () => {
-      const imported = koyuImports(page);
-      for (const n of names) expect(imported).toContain(n);
-      // 同じ名の関数をこの頁で定義していない (取り込んだうえで自前も持つ、が起こらない)
-      for (const n of names) {
-        expect(readFileSync(page, "utf8")).not.toMatch(new RegExp(`function\\s+${n}\\s*\\(`));
+  // 実際に開いていた: 平面は `band` を、立体は `bandLine` と `runPrism` を書き写していた。
+  //
+  // **描く頁はもう構成子を呼びもしない。**平面は `planMarks(form, level)` を、立体は
+  // `sceneOf(form)` を歩くだけで、起きた実体は印と節に入って届く (koyu 0.24)。だから
+  // 「取り込んでいること」は縛りにならない — 残るのは**書き写していないこと**である
+  const CONSTRUCTORS = ["thicken", "band", "bandLine", "columnRect", "runPrism"];
+  for (const page of DRAWING_PAGES) {
+    it(`${page} は実体の構成子を書き写さない (${CONSTRUCTORS.join(" / ")})`, () => {
+      const src = readFileSync(page, "utf8");
+      for (const n of CONSTRUCTORS) {
+        expect(src).not.toMatch(new RegExp(`function\\s+${n}\\s*\\(`));
       }
     });
   }
+
+  // 立体の数え上げは koyu のものである。`form.spaces` `form.columns` `form.runs`
+  // `form.slabs` `form.site` `form.boundaries` を別々に歩けば、koyu が形に何かを足した日に
+  // 「平面には出て立体には出ない」が黙って起こる — かつてそう作られていた
+  it("src/three/buildScene.ts は立体の数え上げを `sceneOf` から取る", () => {
+    expect(koyuImports("src/three/buildScene.ts")).toContain("sceneOf");
+  });
 
   // **アプリの側で `derive` を呼ぶ頁は一つだけ**である。テストは `derive` を「答え合わせの
   // 相手」として呼ぶので数に入らない — 入れれば、検算を足すたびにこの縛りを緩める羽目になる
@@ -324,9 +331,12 @@ describe("立体は Form と一致する", () => {
     const m = layered("tower");
     const form = formOf(m);
     const built = build(m);
-    const prisms = built.group.children.filter(
-      (o) => (o as THREE.Mesh).isMesh && ((o as THREE.Mesh).geometry as { type?: string }).type === "ExtrudeGeometry",
-    ).length;
+    // 立体はレベルごとの入れ物に入る (2.5D の展開がその変位である) ので、木を辿って数える
+    let prisms = 0;
+    built.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && (mesh.geometry as { type?: string }).type === "ExtrudeGeometry") prisms++;
+    });
     const volumes = form.spaces.filter((s) => s.level && (s.semiOutdoor || s.z1 !== undefined));
     const panels = form.boundaries.reduce((a, b) => a + (b.material?.panels.length ?? 0), 0);
     const expected =

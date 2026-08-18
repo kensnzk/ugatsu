@@ -8,22 +8,30 @@
 // 壁を開口で割る手も、開口の高さも窓台も、階高の近似 (2400mm) も**自前で持っていた**。
 // koyu 側の同じ規則と食い違う余地が構造的に残り、実際に食い違っていた。
 //
-// 3Dモード: `Form` の気積・壁の区間・開口・柱・縦動線・面をそのまま立体へ写す。
-// 2.5Dモード: 各レベルの床プレートを重ね、展開係数で持ち上げる (吹抜けは床の不在=穴)。
+// **数え上げも koyu が持つ。**「その形に何が立つか」は `sceneOf(form)` が一列の節として
+// 返す (koyu 0.24 / `@kensnzk/koyu/draw`)。かつてここは `form.spaces` `form.columns`
+// `form.runs` `form.slabs` `form.site` `form.boundaries` を**六つの別々の巡回**で歩いており、
+// 巡回を一つ書き忘れれば、その主題は黙って立体から消えた。いま歩くのは `scene.nodes` の
+// 一列だけで、枝分かれは `of` (何の) と `role` (どういう扱いの) の二語で足りる。
+// 実体の構成子 (`band` `bandLine` `columnRect` `runPrism`) をここが呼ぶことも、もう無い —
+// 起きた実体が節の `solid` に入って届く (koyu ADR-0058 / ADR-0063)。
 //
-// **立体の構成子も koyu が持つ。**開口の帯 (`bandLine`) も斜路の角柱 (`runPrism`) も、
-// 芯線と厚みと z から実体を起こす規則であり、それは導出の一部である (koyu ADR-0058)。
-// かつてこの頁は両方を書き写しており、同じ `Form` から違う形が出る余地が残っていた。
+// **壁の実体は起こすものですらない。**区間は取合いが既に決まった足あととして届く
+// (koyu ADR-0063)。芯線に厚みを振って箱を立てると、直角に交わる二枚の壁の外側に
+// t/2 × t/2 の隙が残る — かつてここはそうしていた (two-rooms で 4 箇所、complex で 206 箇所)。
 //
-// **壁の実体は起こすものですらない。**区間は `footprint` — 両端の取合いが既に決まった
-// 足あと — を持って届く (koyu ADR-0063)。芯線に厚みを振って箱を立てると、取合いは
-// 開いたままになる。かつてここはそうしており、直角に交わる二枚の壁の外側に
-// t/2 × t/2 の隙が残っていた (two-rooms で 4 箇所、complex で 206 箇所)。
-// **芯線は足あとの軸ではない**ので、足あとは芯線からは戻らない。
+// **節の z は常に真の世界 z である。**2.5D の展開 (`spread`) は立体の座標ではなく
+// **レベルごとの入れ物の変位**として掛かる。かつては z に係数を掛けて焼き込んでおり、
+// 「Form の座標のまま立っているか」を問うことができなかった。
+//
+// 3Dモード: 気積・壁の区間・開口・柱・縦動線・面をそのまま立体へ写す。
+// 2.5Dモード: 各レベルの床プレートを重ね、入れ物ごと持ち上げる (吹抜けは床の不在=穴)。
 import * as THREE from "three";
-import { bandLine, runPrism, type Form, type FormPanel, type RunSolid, type Slab } from "@kensnzk/koyu/form";
+import { sceneOf, type ScenePrism } from "@kensnzk/koyu/draw";
+import type { Form } from "@kensnzk/koyu/form";
 import type { Pt } from "@kensnzk/koyu/model";
 import type { ModelColors } from "../lib/colors.js";
+import { polyBounds } from "../lib/koyu-compat.js";
 import { token, tokenColor } from "../lib/theme.js";
 
 export interface SceneOptions {
@@ -140,233 +148,241 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
   const group = new THREE.Group();
   const pickables: THREE.Mesh[] = [];
   const { colors, stackMode, spread, hiddenLevels } = opts;
+  const scene = sceneOf(form);
 
-  const levelZ = new Map(form.levels.map((l) => [l.name, l.z]));
-  const zOf = (level: string | undefined): number =>
-    (level ? (levelZ.get(level) ?? 0) : 0) * (stackMode ? spread : 1);
+  // ---- レベルごとの入れ物 ----
+  // 節の z は真の世界 z なので、**展開が掛かるのはここだけ**である。z*spread の位置へ
+  // 持ち上げるには差 (spread-1) を足せばよい — 中の物は既に z に居る
+  const holders = new Map<string, THREE.Group>();
+  for (const l of scene.levels) {
+    const g = new THREE.Group();
+    g.position.y = stackMode ? ty(l.z) * (spread - 1) : 0;
+    holders.set(l.name, g);
+    group.add(g);
+  }
+  /** レベルに属さない節の置き場。展開は掛からない */
+  const loose = new THREE.Group();
+  group.add(loose);
+  const at = (level: string | undefined): THREE.Group =>
+    (level !== undefined ? holders.get(level) : undefined) ?? loose;
   const levelHidden = (level: string | undefined): boolean => !!(level && hiddenLevels[level]);
 
-  // ---- 空間 ----
-  // **天井高が決まらない空間には立体を作らない。**koyu は決まらなければ形を作らず
-  // (SUF01 は error)、`Form` はその空間に z を持たない。ここで既定値を捏造すると
-  // 「check が赤いのに立体は完成して見える」ことになる (docs/scope.md §5.2)
-  for (const s of form.spaces) {
-    if (!s.level || levelHidden(s.level)) continue;
-    const base = zOf(s.level);
-    // 吹抜けかどうかは**宣言** (`void:1`) であって型の語ではない (koyu ADR-0051 / muro 1.1)
-    const isVoid = s.void;
-    const color = new THREE.Color(colors.byPath(s.path));
+  // 面 (床・天井・屋根) の節はレベルを持たない (koyu 0.24 の Scene)。面はその空間の階に
+  // 架かるので、空間のパスから引く — 形ではなく、書かれた所属を引き直しているだけである
+  const levelOfSpace = new Map(form.spaces.map((s) => [s.path, s.level]));
 
-    if (stackMode) {
-      if (isVoid) continue; // 床の不在 — プレートを置かないことが吹抜けの表現
-      const mat = new THREE.MeshLambertMaterial({ color });
-      for (const poly of s.outline) {
-        const m = prismMesh(poly, base, base + PLATE_T, mat);
-        m.userData.path = s.path;
-        group.add(m, edgeLines(m, EDGE(), 0.35));
+  const wallMat = new THREE.MeshLambertMaterial({ color: INK() });
+  const doorMat = new THREE.MeshLambertMaterial({ color: DOOR() });
+  const glassMat = new THREE.MeshLambertMaterial({ color: GLASS(), transparent: true, opacity: 0.3 });
+  // ガラスの外皮 (カーテンウォール・サッシ) は壁ごと透かす — 外から中の見える建ち方
+  const glassWallMat = new THREE.MeshLambertMaterial({
+    color: GLASS(),
+    transparent: true,
+    opacity: 0.28,
+  });
+  const railMat = new THREE.MeshLambertMaterial({ color: GHOST(), transparent: true, opacity: 0.75 });
+  const colMat = new THREE.MeshLambertMaterial({ color: INK() });
+  const runMat = new THREE.MeshLambertMaterial({ color: tokenColor("--drawing-derived") });
+  const slabMats: Record<string, THREE.Material> = {
+    floor: new THREE.MeshLambertMaterial({ color: tokenColor("--wash-2") }),
+    ceiling: new THREE.MeshLambertMaterial({
+      color: tokenColor("--wash-1"),
+      transparent: true,
+      opacity: 0.45,
+    }),
+    roof: new THREE.MeshLambertMaterial({ color: INK() }),
+  };
+  const isGlass = opts.glass ?? (() => false);
+
+  /** 2.5D のプレート上の壁線 — レベルごとに一本の LineSegments へまとめる */
+  const strokes = new Map<string, { walls: number[]; opens: number[]; airs: number[] }>();
+
+  for (const node of scene.nodes) {
+    if (levelHidden(node.level)) continue;
+    const parent = at(node.level);
+
+    switch (node.of) {
+      // ---- 空間 ----
+      // **天井高が決まらない空間には立体を作らない。**koyu は決まらなければ形を作らず
+      // (SUF01 は error)、気積の節そのものが来ない。ここで既定値を捏造すると
+      // 「check が赤いのに立体は完成して見える」ことになる (docs/scope.md §5.2)
+      case "space": {
+        const solid = node.solid;
+        if (!solid || node.level === undefined) continue;
+        const color = new THREE.Color(colors.byPath(node.ref));
+        const z0 = solid.bottom[0]!;
+        if (node.role === "plate") {
+          // 階を面として読んだ節。**厚みは koyu に無い** — 紙の都合であって形ではないので、
+          // 板にするのはここである
+          if (stackMode) {
+            // 吹抜けかどうかは**宣言** (`void:1`) であって型の語ではない (koyu ADR-0051 / muro 1.1)
+            if (node.facts.hollow) continue; // 床の不在 — プレートを置かないことが吹抜けの表現
+            const m = prismMesh(solid.ring, z0, z0 + PLATE_T, new THREE.MeshLambertMaterial({ color }));
+            m.userData.path = node.ref;
+            parent.add(m, edgeLines(m, EDGE(), 0.35));
+            pickables.push(m);
+            continue;
+          }
+          // 半屋外 (庭・テラス・バルコニー — 導出) は気積でなく地面: 薄い板で描く
+          if (!node.facts.semiOutdoor) continue;
+          const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 });
+          const m = prismMesh(solid.ring, z0, z0 + GROUND_T, mat);
+          m.userData.path = node.ref;
+          parent.add(m, edgeLines(m, EDGE(), 0.45));
+          pickables.push(m);
+          continue;
+        }
+        // 気積
+        if (stackMode || node.facts.semiOutdoor) continue; // 半屋外は上で地面として描いた
+        const hollow = !!node.facts.hollow;
+        // 吹抜け: 実体を持たない気積 — 輪郭線だけの幽霊
+        const mat = hollow
+          ? new THREE.MeshBasicMaterial({ visible: false })
+          : new THREE.MeshLambertMaterial({
+              color,
+              transparent: true,
+              opacity: 0.5,
+              depthWrite: false,
+            });
+        const m = prismMesh(solid.ring, z0, solid.top[0]!, mat);
+        m.userData.path = node.ref;
+        parent.add(m, edgeLines(m, hollow ? GHOST() : EDGE(), hollow ? 0.55 : 0.45));
         pickables.push(m);
+        break;
       }
-      continue;
-    }
 
-    // 半屋外 (庭・テラス・バルコニー — 導出) は気積でなく地面: 薄い板で描く
-    if (s.semiOutdoor) {
-      const mat = new THREE.MeshLambertMaterial({ color, transparent: true, opacity: 0.9 });
-      for (const poly of s.outline) {
-        const m = prismMesh(poly, base, base + GROUND_T, mat);
-        m.userData.path = s.path;
-        group.add(m, edgeLines(m, EDGE(), 0.45));
-        pickables.push(m);
+      case "boundary": {
+        // 壁 — **開口で割られた区間として立つ。**窓の裏に壁の箱が残ると、ガラスをいくら
+        // 透かしても中は見えない。割るのも取合いを閉じるのも Form であり、ここではない
+        if (node.role === "body") {
+          if (stackMode || !opts.showWalls || !node.solid) continue;
+          // `written.boundary` は**正準順**の索引である (koyu ADR-0041)
+          const glassy = node.written !== undefined && isGlass(node.written);
+          const mat = node.facts.air ? railMat : glassy ? glassWallMat : wallMat;
+          parent.add(prismMesh(node.solid.ring, node.solid.bottom[0]!, node.solid.top[0]!, mat));
+          continue;
+        }
+        // 芯線 — 2.5D のプレート上の壁線としてだけ引く
+        if (!stackMode || !node.line || node.level === undefined) continue;
+        if (node.kind !== "wall" && node.kind !== "open") continue;
+        const bucket = strokes.get(node.level) ?? { walls: [], opens: [], airs: [] };
+        strokes.set(node.level, bucket);
+        const arr = node.kind === "open" ? bucket.opens : node.facts.air ? bucket.airs : bucket.walls;
+        const zTop = node.line.z + PLATE_T + 20;
+        const pts = node.line.points;
+        for (let i = 0; i + 1 < pts.length; i++) {
+          const a = pts[i]!;
+          const b = pts[i + 1]!;
+          arr.push(tx(a.x), zTop, tz(a.y), tx(b.x), zTop, tz(b.y));
+        }
+        break;
       }
-      continue;
-    }
-    if (s.z0 === undefined || s.z1 === undefined) continue;
-    if (isVoid) {
-      // 吹抜け: 実体を持たない気積 — 輪郭線だけの幽霊
-      for (const poly of s.outline) {
-        const m = prismMesh(poly, s.z0, s.z1, new THREE.MeshBasicMaterial({ visible: false }));
-        m.userData.path = s.path;
-        group.add(m, edgeLines(m, GHOST(), 0.55));
-        pickables.push(m);
-      }
-      continue;
-    }
-    const mat = new THREE.MeshLambertMaterial({
-      color,
-      transparent: true,
-      opacity: 0.5,
-      depthWrite: false,
-    });
-    for (const poly of s.outline) {
-      const m = prismMesh(poly, s.z0, s.z1, mat);
-      m.userData.path = s.path;
-      group.add(m, edgeLines(m, EDGE(), 0.45));
-      pickables.push(m);
-    }
-  }
 
-  // ---- 柱 (koyu ADR-0023) — 通り芯の交点と床の交わりから現れる ----
-  if (!stackMode) {
-    const colMat = new THREE.MeshLambertMaterial({ color: INK() });
-    for (const c of form.columns) {
-      if (levelHidden(c.level)) continue;
-      const h = c.z1 - c.z0;
-      group.add(boxMesh(c.w, h, c.d, tx(c.x), ty(c.z0) + h / 2, tz(c.y), colMat));
-    }
-  }
-
-  // ---- 縦動線 (koyu ADR-0021) — 段は段として、斜路は傾いた版として立ち上がる ----
-  // 段割りも勾配もここでは決めない。koyu が返した立体を幾何に写すだけである
-  if (!stackMode) {
-    const runMat = new THREE.MeshLambertMaterial({ color: tokenColor("--drawing-derived") });
-    for (const run of form.runs) {
-      if (levelHidden(run.level)) continue;
-      for (const solid of run.solids) group.add(solidMesh(solid, runMat));
-    }
-  }
-
-  // ---- 面の要素 (koyu ADR-0024): 床・天井・屋根 ----
-  if (!stackMode && opts.showFabric !== false) {
-    const mats: Record<string, THREE.Material> = {
-      floor: new THREE.MeshLambertMaterial({ color: tokenColor("--wash-2") }),
-      ceiling: new THREE.MeshLambertMaterial({
-        color: tokenColor("--wash-1"),
-        transparent: true,
-        opacity: 0.45,
-      }),
-      roof: new THREE.MeshLambertMaterial({ color: INK() }),
-    };
-    for (const sl of form.slabs) {
-      if (levelHidden(sl.level)) continue;
-      group.add(slabMesh(sl, mats[sl.kind]!));
-    }
-  }
-
-  // ---- 敷地形状 (ADR-0011): 所与の多角形を地盤面として描き、境界線を引く ----
-  for (const poly of form.site) {
-    const shape = new THREE.Shape(poly.points.map((p) => new THREE.Vector2(p.x, p.y)));
-    const g = new THREE.ShapeGeometry(shape);
-    g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
-    const plate = new THREE.Mesh(
-      g,
-      new THREE.MeshLambertMaterial({ color: tokenColor("--wash-1"), side: THREE.DoubleSide }),
-    );
-    plate.position.y = -30;
-    group.add(plate);
-    const linePts = [...poly.points, poly.points[0]!].map(
-      (p) => new THREE.Vector3(tx(p.x), 25, tz(p.y)),
-    );
-    group.add(
-      new THREE.Line(
-        new THREE.BufferGeometry().setFromPoints(linePts),
-        new THREE.LineBasicMaterial({ color: tokenColor("--drawing-derived") }),
-      ),
-    );
-  }
-
-  // ---- 壁と開口 ----
-  if (stackMode) {
-    // プレート上の壁線 (レベルごとに一本のLineSegmentsへまとめる)
-    const byLevel = new Map<string, { walls: number[]; opens: number[]; airs: number[] }>();
-    for (const b of form.boundaries) {
-      if (b.kind !== "wall" && b.kind !== "open") continue;
-      if (!b.level || levelHidden(b.level)) continue;
-      const zTop = zOf(b.level) + PLATE_T + 20;
-      const bucket = byLevel.get(b.level) ?? { walls: [], opens: [], airs: [] };
-      byLevel.set(b.level, bucket);
-      const arr = b.kind === "open" ? bucket.opens : b.air ? bucket.airs : bucket.walls;
-      const s = b.segment;
-      arr.push(tx(s.x1), zTop, tz(s.y1), tx(s.x2), zTop, tz(s.y2));
-    }
-    for (const [level, bucket] of byLevel) {
-      for (const [arr, mat] of [
-        [bucket.walls, new THREE.LineBasicMaterial({ color: LINE() })],
-        [bucket.airs, new THREE.LineBasicMaterial({ color: GHOST(), transparent: true, opacity: 0.8 })],
-        [
-          bucket.opens,
-          new THREE.LineDashedMaterial({ color: GHOST(), dashSize: 240, gapSize: 160 }),
-        ],
-      ] as const) {
-        if (arr.length === 0) continue;
-        const g = new THREE.BufferGeometry();
-        g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
-        const lines = new THREE.LineSegments(g, mat);
-        lines.computeLineDistances();
-        group.add(lines);
-      }
-      // レベルラベル
-      const pts = form.spaces.filter((s) => s.level === level).flatMap((s) => s.outline.flat());
-      if (pts.length > 0 && typeof document !== "undefined") {
-        const minX = Math.min(...pts.map((p) => p.x));
-        const minY = Math.min(...pts.map((p) => p.y));
-        const maxY = Math.max(...pts.map((p) => p.y));
-        const sp = textSprite(level, 900);
-        sp.position.set(tx(minX) - 1500, ty(zOf(level)) + 400, tz((minY + maxY) / 2));
-        group.add(sp);
-      }
-    }
-  } else if (opts.showWalls) {
-    const wallMat = new THREE.MeshLambertMaterial({ color: INK() });
-    const doorMat = new THREE.MeshLambertMaterial({ color: DOOR() });
-    const glassMat = new THREE.MeshLambertMaterial({
-      color: GLASS(),
-      transparent: true,
-      opacity: 0.3,
-    });
-    // ガラスの外皮 (カーテンウォール・サッシ) は壁ごと透かす — 外から中の見える建ち方
-    const glassWallMat = new THREE.MeshLambertMaterial({
-      color: GLASS(),
-      transparent: true,
-      opacity: 0.28,
-    });
-    const railMat = new THREE.MeshLambertMaterial({
-      color: GHOST(),
-      transparent: true,
-      opacity: 0.75,
-    });
-    const isGlass = opts.glass ?? (() => false);
-
-    // 壁 — **開口で割られた区間として立つ。**窓の裏に壁の箱が残ると、
-    // ガラスをいくら透かしても中は見えない。割るのは Form であり、ここではない。
-    // 取合いを閉じるのも Form である — ここには直すべき隅が無い (koyu ADR-0063)
-    for (const b of form.boundaries) {
-      if (!b.material || levelHidden(b.level)) continue;
-      const mat = b.air ? railMat : isGlass(b) ? glassWallMat : wallMat;
-      for (const p of b.material.panels) group.add(panelMesh(p, mat));
-    }
-
-    // 建具 (扉・ガラス) — 開口の z 範囲も幅も Form が持つ。
-    // 窓台 (sill) を発明しない: 頭がまぐさ高に揃うことで下端は既に決まっている
-    if (opts.showOpenings) {
-      for (const o of form.openings) {
-        if (levelHidden(o.level)) continue;
-        // 帯が線分上で占める区間は koyu の構成子が決める (ADR-0058)。
-        // 足しているのは見付け厚の増しだけで、それは見た目である
+      // 建具 (扉・ガラス) — 帯が線分上で占める区間 (`centre`) も見付け厚も z 範囲も節が持つ。
+      // 足しているのは見付け厚の増しだけで、それは見た目である。窓台 (sill) は発明しない
+      case "opening": {
+        if (stackMode || !opts.showWalls || !opts.showOpenings) continue;
+        if (!node.solid || !node.centre || node.t === undefined) continue;
         const m = segBox(
-          bandLine(o.segment, o.cx, o.cy, o.w),
-          o.z0,
-          o.z1,
-          o.t + JOINERY_T,
-          o.kind === "door" ? doorMat : glassMat,
+          node.centre,
+          node.solid.bottom[0]!,
+          node.solid.top[0]!,
+          node.t + JOINERY_T,
+          node.kind === "door" ? doorMat : glassMat,
         );
-        if (m) group.add(m);
+        if (m) parent.add(m);
+        break;
       }
+
+      // 柱 (koyu ADR-0023) — 通り芯の交点と床の交わりから現れる
+      case "column": {
+        if (stackMode || !node.solid) continue;
+        parent.add(solidMesh(node.solid, colMat));
+        break;
+      }
+
+      // 縦動線 (koyu ADR-0021) — 段は段として、斜路は傾いた版として立ち上がる。
+      // 段割りも勾配もここでは決めない。koyu が返した立体を幾何に写すだけである
+      case "run": {
+        if (stackMode || !node.solid) continue;
+        parent.add(solidMesh(node.solid, runMat));
+        break;
+      }
+
+      // 面の要素 (koyu ADR-0024): 床・天井・屋根
+      case "slab": {
+        if (stackMode || opts.showFabric === false || !node.solid) continue;
+        const level = levelOfSpace.get(node.ref);
+        if (levelHidden(level)) continue;
+        const mat = slabMats[node.kind ?? ""];
+        if (!mat) continue;
+        at(level).add(prismMesh(node.solid.ring, node.solid.bottom[0]!, node.solid.top[0]!, mat));
+        break;
+      }
+
+      // 敷地形状 (ADR-0011): 所与の多角形を地盤面として描き、境界線を引く。
+      // **地面に接する階に属す** — 最下階ではない。地下があると最下階はそこであり、
+      // 敷地が地下の階と一緒に沈む (koyu 0.24 の `scene.ground`)
+      case "site": {
+        const home = at(scene.ground);
+        if (node.role === "plate") {
+          if (!node.solid) continue;
+          const shape = new THREE.Shape(node.solid.ring.map((p) => new THREE.Vector2(p.x, p.y)));
+          const g = new THREE.ShapeGeometry(shape);
+          g.rotateX(-Math.PI / 2); // (x, y, 0) → (x, 0, -y) = 世界座標の地面
+          const plate = new THREE.Mesh(
+            g,
+            new THREE.MeshLambertMaterial({ color: tokenColor("--wash-1"), side: THREE.DoubleSide }),
+          );
+          plate.position.y = -30;
+          home.add(plate);
+          continue;
+        }
+        if (!node.line || node.line.points.length === 0) continue;
+        const ring = node.line.closed
+          ? [...node.line.points, node.line.points[0]!]
+          : node.line.points;
+        home.add(
+          new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(
+              ring.map((p) => new THREE.Vector3(tx(p.x), 25, tz(p.y))),
+            ),
+            new THREE.LineBasicMaterial({ color: tokenColor("--drawing-derived") }),
+          ),
+        );
+        break;
+      }
+
+      // レベルラベル (2.5D)。**座は koyu が返し、言葉は消費者が決める** — 節は文字を持たない
+      case "level": {
+        if (!stackMode || !node.mark || typeof document === "undefined") continue;
+        const sp = textSprite(node.ref, 900);
+        sp.position.set(tx(node.mark.x) - 1500, ty(node.mark.z) + 400, tz(node.mark.y));
+        parent.add(sp);
+        break;
+      }
+    }
+  }
+
+  for (const [level, bucket] of strokes) {
+    const parent = at(level);
+    for (const [arr, mat] of [
+      [bucket.walls, new THREE.LineBasicMaterial({ color: LINE() })],
+      [bucket.airs, new THREE.LineBasicMaterial({ color: GHOST(), transparent: true, opacity: 0.8 })],
+      [bucket.opens, new THREE.LineDashedMaterial({ color: GHOST(), dashSize: 240, gapSize: 160 })],
+    ] as const) {
+      if (arr.length === 0) continue;
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(arr, 3));
+      const lines = new THREE.LineSegments(g, mat);
+      lines.computeLineDistances();
+      parent.add(lines);
     }
   }
 
   // mm → m
   group.scale.setScalar(0.001);
   return { group, pickables };
-}
-
-/**
- * 壁の一区間を立体へ。**`Form` が持つ足あとをそのまま押し出す** (koyu ADR-0063)。
- *
- * 厚みを受け取らないのは、受け取っても使い道が無いからである。取合いの決まった壁の実体は
- * 芯線と厚みの関数ではない — 勝った壁は節点を越えて伸び、負けた壁はその面で切られる。
- */
-function panelMesh(p: FormPanel, mat: THREE.Material): THREE.Mesh {
-  return prismMesh(p.footprint, p.z0, p.z1, mat);
 }
 
 /**
@@ -383,40 +399,42 @@ function prismMesh(outline: Pt[], z0: number, z1: number, mat: THREE.Material): 
   return m;
 }
 
-/** 面 (床・天井・屋根) を厚みのある版へ押し出す */
-function slabMesh(sl: Slab, mat: THREE.Material): THREE.Mesh {
-  return prismMesh(sl.outline, sl.z0, sl.z1, mat);
-}
-
-/** koyu が返した素の立体を three の網へ。判断は一切持たず、形を写すだけである */
-function solidMesh(solid: RunSolid, mat: THREE.Material): THREE.Mesh {
-  const r = solid.rect;
-  if (solid.kind === "box") {
+/**
+ * koyu が返した素の立体を three の網へ。判断は一切持たず、形を写すだけである。
+ *
+ * `solid.level` は「頂点ごとの下端も上端も一つの数か」という**数についての事実**であって
+ * 材の示唆ではない (koyu の `ScenePrism`)。揃っていれば直角柱で、ここへ来るそれは柱の断面か
+ * 段板 — どちらも軸に沿った矩形の上に立つので箱で足りる。揃っていなければ (斜路・
+ * エスカレーターの傾いた版) 頂点ごとの z を持つ帯を張るしかない。
+ * **四隅の高さの振り方は koyu が決めている** — ここが持つのは world → three の付け替えだけ
+ */
+function solidMesh(solid: ScenePrism, mat: THREE.Material): THREE.Mesh {
+  const n = solid.ring.length;
+  if (solid.level) {
+    const r = polyBounds(solid.ring);
+    const z0 = solid.bottom[0]!;
+    const z1 = solid.top[0]!;
     return boxMesh(
       r.x2 - r.x1,
-      Math.max(1, solid.z1 - solid.z0),
+      Math.max(1, z1 - z0),
       r.y2 - r.y1,
       tx((r.x1 + r.x2) / 2),
-      ty((solid.z0 + solid.z1) / 2),
+      ty((z0 + z1) / 2),
       tz((r.y1 + r.y2) / 2),
       mat,
     );
   }
-  // 傾いた版: 四隅の高さの振り方は koyu の `runPrism` が決める (ADR-0058)。
-  // ここが持つのは world → three の座標の付け替えだけである
-  const prism = runPrism(solid);
-  const top = prism.poly.map((p, i) => [tx(p.x), ty(prism.top[i]!), tz(p.y)] as const);
-  const bot = prism.poly.map((p, i) => [tx(p.x), ty(prism.bottom[i]!), tz(p.y)] as const);
-  const v = [...top, ...bot].flat();
-  // 上面 0-1-2-3 / 下面 4-5-6-7 (上から見て同じ並び) の側面を張る
-  const idx = [
-    0, 1, 2, 0, 2, 3, // 上
-    6, 5, 4, 7, 6, 4, // 下
-    0, 4, 5, 0, 5, 1,
-    1, 5, 6, 1, 6, 2,
-    2, 6, 7, 2, 7, 3,
-    3, 7, 4, 3, 4, 0,
-  ];
+  // 上面 0..n-1 / 下面 n..2n-1 (上から見て同じ並び) を張る
+  const v: number[] = [];
+  for (const [i, p] of solid.ring.entries()) v.push(tx(p.x), ty(solid.top[i]!), tz(p.y));
+  for (const [i, p] of solid.ring.entries()) v.push(tx(p.x), ty(solid.bottom[i]!), tz(p.y));
+  const idx: number[] = [];
+  for (let i = 1; i + 1 < n; i++) idx.push(0, i, i + 1); // 上
+  for (let i = 1; i + 1 < n; i++) idx.push(n + i + 1, n + i, n); // 下 (裏返し)
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    idx.push(i, i + n, j + n, i, j + n, j); // 側
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute("position", new THREE.Float32BufferAttribute(v, 3));
   g.setIndex(idx);

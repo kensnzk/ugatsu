@@ -11,7 +11,7 @@ import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Radio } from "../lib/ds.js";
 import { formOf } from "../lib/form.js";
 import { polyBounds, polygonAreaM2 } from "../lib/koyu-compat.js";
-import { planMarks, type Mark, type MarkRole } from "@kensnzk/koyu/draw";
+import { planMarks, sceneOf, type Mark, type MarkRole } from "@kensnzk/koyu/draw";
 import { planWords } from "../lib/planWords.js";
 import { token } from "../lib/theme.js";
 import { writtenOf } from "@kensnzk/koyu/draw";
@@ -90,11 +90,14 @@ export function PlanView() {
     [form, planLevel],
   );
 
-  // 敷地形状 (ADR-0011) は最下階の平面 (配置図兼用) に敷地境界線として描く
+  // 敷地形状 (ADR-0011) は**地面に接する階**の平面 (配置図兼用) に敷地境界線として描く。
+  // 「最下階」ではない — 地下のある建物ではそれが地下二階になり、敷地が地下の平面に載る。
+  // どの階が地面に接するかは koyu が言う (`sceneOf(form).ground`)
+  const ground = useMemo(() => (form ? sceneOf(form).ground : undefined), [form]);
   const sitePolys = useMemo(() => {
     if (!form || !planLevel) return [];
-    return planLevel === form.levels[0]?.name ? form.site : [];
-  }, [form, planLevel]);
+    return planLevel === ground ? form.site : [];
+  }, [form, planLevel, ground]);
 
   const extent: Extent | null = useMemo(() => {
     if (rooms.length === 0) return null;
