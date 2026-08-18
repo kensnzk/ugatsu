@@ -8,7 +8,8 @@ koyu (.muro テキスト) の 2D/3D ビューア。React + Vite + Three.js + Cod
 
 - **形の入口は `src/lib/form.ts` の `formOf(model)` 一つ。**`derive` を呼ぶ頁を増やさない — 平面と立体が別の形を見た瞬間に凍結面「導出の一致」が壊れる
 - **描画の三頁** (`components/PlanView.tsx` / `three/buildScene.ts` / `lib/planFigure.ts`) **は koyu の形の部品を取り込まない** (`segmentsFor` `placeOpening` `slabs` `columnsFor` `runSolids` `runDrawsForLevel` `heff` …)。`test/form.test.ts` が import で縛る
-- **実体の構成子 (`band` `bandLine` `thicken` `columnRect` `runPrism`) は逆に koyu から取る。**芯線と厚みから実体を起こす規則も導出の一部で、koyu が唯一の実装を公開している (koyu ADR-0058)。**書き写さない** — 同じ `Form` から違う形が出る余地がそこから戻る
+- **実体の構成子 (`band` `bandLine` `columnRect` `runPrism`) は逆に koyu から取る。**芯線と厚みから実体を起こす規則も導出の一部で、koyu が唯一の実装を公開している (koyu ADR-0058)。**書き写さない** — 同じ `Form` から違う形が出る余地がそこから戻る
+- **壁だけは起こしもしない。**区間は `footprint` — 両端の取合いが決まった足あと — を持って届くので、押し出すだけである (koyu ADR-0063 / [ADR-0009](docs/decisions/0009-the-wall-body-arrives.md))。**芯線は足あとの軸ではない**ので、`thicken` で組み直すと隅が開く。開いても落ちない
 - **既定値を発明しない。**壁厚も開口の高さも階高も `Form` に入って届く。**決まらなければ描かない** — koyu が形を作らない場面で ugatsu も作らない
 - ugatsu が足してよいのは色・線幅・線種・記号・注記の言葉・紙面の余白だけ。それらは `Form` に一つも無い
 

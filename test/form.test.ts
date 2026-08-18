@@ -11,12 +11,13 @@
 //      省くのは垂れ壁と腰壁の二つだけで、それも数として現れる
 //   4. **上部吹抜けの投影が出る** — 同梱例に 11 件。かつては一つも描かれていなかった
 //   5. **天井高が決まらなければ立体を作らない** — koyu が形を作らない場面で描かない
+//   6. **壁の実体が Form の足あとである** — 芯線に厚みを振り直さない。取合いは既に閉じている
 import { readdirSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import * as THREE from "three";
 import { parse, parseFiles } from "@kensnzk/koyu";
 import { derive, type Form } from "@kensnzk/koyu/form";
-import type { Model } from "@kensnzk/koyu/model";
+import type { Model, Pt } from "@kensnzk/koyu/model";
 import { buildColors } from "../src/lib/colors.js";
 import { formOf } from "../src/lib/form.js";
 import { planFigure, type MarkRole } from "../src/lib/planFigure.js";
@@ -184,16 +185,15 @@ function segKey(
   );
 }
 
-/** `Form` だけから、3Dシーンに立つべき箱の集合を組む */
+/**
+ * `Form` だけから、3Dシーンに立つべき箱の集合を組む。
+ *
+ * **壁はここに居ない。**壁の一区間は箱ではなく足あとの押し出しであり (koyu ADR-0063)、
+ * `expectedPrisms` が受け持つ。芯線と厚みから箱を組み直せば、取合いの開いた壁を
+ * 期待値の側にも書くことになり、**実装と一緒に壊れて通る**
+ */
 function expectedBoxes(form: Form): string[] {
   const out: string[] = [];
-  for (const b of form.boundaries) {
-    if (!b.material) continue;
-    for (const p of b.material.panels) {
-      const k = segKey(p, p.z0, p.z1, b.material.t);
-      if (k) out.push(k);
-    }
-  }
   for (const o of form.openings) {
     const half = o.w / 2;
     const len = Math.hypot(o.segment.x2 - o.segment.x1, o.segment.y2 - o.segment.y1) || 1;
@@ -246,6 +246,53 @@ function actualBoxes(group: THREE.Group): string[] {
   return out.sort();
 }
 
+/** 押し出しの同一性 — 輪郭の頂点列 (順序込み) と z 範囲 */
+const prismKey = (poly: Pt[], z0: number, z1: number): string =>
+  `${poly.map((p) => `${r3(p.x)},${r3(p.y)}`).join(" ")} @ ${r3(z0)}..${r3(z1)}`;
+
+/** `Form` だけから、3Dシーンに立つべき押し出しの集合を組む — 壁・気積・面 */
+function expectedPrisms(form: Form): string[] {
+  const out: string[] = [];
+  const levelZ = new Map(form.levels.map((l) => [l.name, l.z]));
+  // **壁は足あとをそのまま押し出す。**芯線に厚みを振った箱ではない (koyu ADR-0063) —
+  // 取合いの決まった実体は芯線と厚みの関数ではないので、ここから組み直すことができない
+  for (const b of form.boundaries) {
+    if (!b.material) continue;
+    for (const p of b.material.panels) out.push(prismKey(p.footprint, p.z0, p.z1));
+  }
+  for (const s of form.spaces) {
+    if (!s.level) continue;
+    if (s.semiOutdoor) {
+      // 半屋外は気積ではなく地面の板 (150mm — 原本に対応物を持たない見た目)
+      const z = levelZ.get(s.level) ?? 0;
+      for (const poly of s.outline) out.push(prismKey(poly, z, z + 150));
+      continue;
+    }
+    if (s.z0 === undefined || s.z1 === undefined) continue;
+    for (const poly of s.outline) out.push(prismKey(poly, s.z0, s.z1));
+  }
+  for (const sl of form.slabs) out.push(prismKey(sl.outline, sl.z0, sl.z1));
+  return out.sort();
+}
+
+/** 押し出しの輪郭を三次元の網から読み戻さずに、作った `Shape` から読む */
+const shapeOf = (g: THREE.ExtrudeGeometry): Pt[] =>
+  (g.parameters.shapes as THREE.Shape).getPoints().map((v) => ({ x: v.x, y: v.y }));
+
+/** シーンに実際に立った押し出し */
+function actualPrisms(group: THREE.Group): string[] {
+  const out: string[] = [];
+  group.traverse((o) => {
+    const m = o as THREE.Mesh;
+    if (!m.isMesh) return;
+    const g = m.geometry as THREE.ExtrudeGeometry;
+    if (g.type !== "ExtrudeGeometry") return;
+    const z0 = m.position.y;
+    out.push(prismKey(shapeOf(g), z0, z0 + (g.parameters.options.depth as number)));
+  });
+  return out.sort();
+}
+
 const build = (m: Model, over: Partial<Parameters<typeof buildScene>[1]> = {}) =>
   buildScene(formOf(m), {
     colors: buildColors(m, "type"),
@@ -259,9 +306,19 @@ const build = (m: Model, over: Partial<Parameters<typeof buildScene>[1]> = {}) =
 
 describe("立体は Form と一致する", () => {
   for (const [name, load] of Object.entries(CASES)) {
-    it(`${name}: 壁の区間・建具・柱・段板が Form の座標のまま立つ`, () => {
+    it(`${name}: 建具・柱・段板が Form の座標のまま立つ`, () => {
       const m = load();
       expect(actualBoxes(build(m).group)).toEqual(expectedBoxes(formOf(m)));
+    });
+  }
+
+  // **押し出しは Form の輪郭そのものである。**壁の足あと・空間の気積・面 (床・天井・屋根) の
+  // どれも `Form` に入って届き、シーンはそれを z へ伸ばすだけである。数ではなく集合で
+  // 突き合わせるので、輪郭が一つでも捏造されれば落ちる (koyu ADR-0063)
+  for (const [name, load] of Object.entries(CASES)) {
+    it(`${name}: 壁の足あと・気積・面が Form の輪郭のまま押し出される`, () => {
+      const m = load();
+      expect(actualPrisms(build(m).group)).toEqual(expectedPrisms(formOf(m)));
     });
   }
 
@@ -273,10 +330,11 @@ describe("立体は Form と一致する", () => {
       (o) => (o as THREE.Mesh).isMesh && ((o as THREE.Mesh).geometry as { type?: string }).type === "ExtrudeGeometry",
     ).length;
     const volumes = form.spaces.filter((s) => s.level && (s.semiOutdoor || s.z1 !== undefined));
+    const panels = form.boundaries.reduce((a, b) => a + (b.material?.panels.length ?? 0), 0);
     const expected =
-      volumes.reduce((a, s) => a + s.outline.length, 0) + form.slabs.length + form.site.length;
+      volumes.reduce((a, s) => a + s.outline.length, 0) + form.slabs.length + panels;
     // 敷地の地盤面は ShapeGeometry なので prisms には入らない
-    expect(prisms).toBe(expected - form.site.length);
+    expect(prisms).toBe(expected);
   });
 
   it("領域を持つ空間はすべてピック対象になる", () => {
@@ -287,6 +345,119 @@ describe("立体は Form と一致する", () => {
       .reduce((a, s) => a + s.outline.length, 0);
     expect(build(m).pickables.length).toBe(pickable);
   });
+});
+
+// ---- 2.1 壁の取合いが閉じている (koyu ADR-0063) ----------------------------
+//
+// 芯線に厚みを振るだけだと、直角に交わる二枚の壁が共有する点の外側に t/2 × t/2 の升が残り、
+// **どちらの壁にも属さない。**koyu ADR-0063 がその穴を数えている — two-rooms 4・office 9・
+// house 13・basement 17・mansion 85・complex 206。**ugatsu はまさにその作り方をしていた**
+// ので、同じ穴が 3D の隅という隅に開いていた。
+//
+// 0.22.0 の `derive` が取合いを決め、区間は `footprint` を持って届く。ここはその穴の数え方を
+// **描かれた立体に対して**行う: 端点を共有する二枚の壁の外側の升の中心を取り、シーンに立った
+// 壁のどれかがそこを覆っていることを言う。芯線から箱を起こす実装では、この点はどの壁にも
+// 入らない。
+
+const near = (a: Pt, b: Pt): boolean => Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1;
+
+/** 多角形の内側か (射線法)。標本は升の中心なので、辺の上に乗ることはない */
+function covers(poly: Pt[], q: Pt): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i]!;
+    const b = poly[j]!;
+    if (a.y > q.y !== b.y > q.y && q.x < ((b.x - a.x) * (q.y - a.y)) / (b.y - a.y) + a.x) {
+      inside = !inside;
+    }
+  }
+  return inside;
+}
+
+/**
+ * そのレベルの平面に落ちた**壁の**足あと。
+ * 空間の気積は `userData.path` を持ち、面は `showFabric:false` で出ない — 残るのが壁である
+ */
+function wallOutlines(m: Model, form: Form, level: string): Pt[][] {
+  const hiddenLevels = Object.fromEntries(
+    form.levels.filter((l) => l.name !== level).map((l) => [l.name, true as const]),
+  );
+  const built = build(m, { hiddenLevels, showFabric: false, showOpenings: false });
+  const out: Pt[][] = [];
+  built.group.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (!mesh.isMesh || mesh.userData.path) return;
+    const g = mesh.geometry as THREE.ExtrudeGeometry;
+    if (g.type === "ExtrudeGeometry") out.push(shapeOf(g));
+  });
+  return out;
+}
+
+/** 端点を共有する二枚の壁が作る隅の、外側の升の中心 */
+function cornerSamples(form: Form, level: string): Pt[] {
+  const bodies = form.boundaries
+    .filter((b) => b.level === level && b.material && b.material.panels.length > 0)
+    .map((b) => {
+      const s = b.segment;
+      const len = Math.hypot(s.x2 - s.x1, s.y2 - s.y1) || 1;
+      return {
+        ends: [
+          { x: s.x1, y: s.y1 },
+          { x: s.x2, y: s.y2 },
+        ] as [Pt, Pt],
+        u: { x: (s.x2 - s.x1) / len, y: (s.y2 - s.y1) / len },
+        half: b.material!.t / 2,
+        panels: b.material!.panels,
+      };
+    });
+  // 端が実体を持たない (開口が壁の端まで届いている) 場合、そこに閉じるべき隅は無い
+  const bodied = (b: (typeof bodies)[number], p: Pt): boolean =>
+    b.panels.some((q) => near({ x: q.x1, y: q.y1 }, p) || near({ x: q.x2, y: q.y2 }, p));
+  const out: Pt[] = [];
+  for (let i = 0; i < bodies.length; i++) {
+    for (let j = i + 1; j < bodies.length; j++) {
+      const a = bodies[i]!;
+      const b = bodies[j]!;
+      if (Math.abs(a.u.x * b.u.y - a.u.y * b.u.x) < 1e-9) continue; // 平行 — 突き付けであって隅ではない
+      for (const ea of [0, 1] as const) {
+        for (const eb of [0, 1] as const) {
+          const n = a.ends[ea];
+          if (!near(n, b.ends[eb]) || !bodied(a, n) || !bodied(b, n)) continue;
+          // それぞれが節点の先へ伸びる向き。升はその二つの向きの側にある
+          const wa = ea === 1 ? a.u : { x: -a.u.x, y: -a.u.y };
+          const wb = eb === 1 ? b.u : { x: -b.u.x, y: -b.u.y };
+          out.push({
+            x: n.x + wa.x * (b.half / 2) + wb.x * (a.half / 2),
+            y: n.y + wa.y * (b.half / 2) + wb.y * (a.half / 2),
+          });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+describe("壁の取合いは閉じている (koyu ADR-0063)", () => {
+  for (const [name, load] of Object.entries(CASES)) {
+    it(`${name}: 端点を共有する壁の隅に穴が無い`, () => {
+      const m = load();
+      const form = formOf(m);
+      let sampled = 0;
+      const open: string[] = [];
+      for (const l of form.levels) {
+        const samples = cornerSamples(form, l.name);
+        if (samples.length === 0) continue;
+        const walls = wallOutlines(m, form, l.name);
+        for (const q of samples) {
+          sampled++;
+          if (!walls.some((poly) => covers(poly, q))) open.push(`${l.name} ${q.x},${q.y}`);
+        }
+      }
+      // 母集団が空なら上の一致は何も言っていない
+      expect(sampled).toBeGreaterThan(0);
+      expect(open).toEqual([]);
+    });
+  }
 });
 
 // ---- 3. 平面が Form を取りこぼさない ---------------------------------------
@@ -478,6 +649,7 @@ describe("斜め線分の上の開口も形になる", () => {
     expect(marks).toContain("door-leaf");
     expect(marks).toContain("door-arc");
     expect(actualBoxes(build(m).group)).toEqual(expectedBoxes(form));
+    expect(actualPrisms(build(m).group)).toEqual(expectedPrisms(form));
   });
 });
 
@@ -502,6 +674,9 @@ describe("天井高が決まらなければ立体を作らない (docs/scope.md 
     // ugatsu 側 — かつては 2400mm で描いてしまい、check が赤いのに立体が完成して見えた
     const built = build(m);
     expect(actualBoxes(built.group)).toEqual([]);
+    // 押し出しに残るのは koyu が返した面 (床版) だけ — 壁の足あても気積も一つも無い
+    expect(actualPrisms(built.group)).toEqual(expectedPrisms(form));
+    expect(expectedPrisms(form).length).toBe(form.slabs.length);
     expect(built.pickables).toEqual([]);
   });
 });
