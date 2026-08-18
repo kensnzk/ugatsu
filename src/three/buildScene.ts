@@ -14,6 +14,12 @@
 // **立体の構成子も koyu が持つ。**開口の帯 (`bandLine`) も斜路の角柱 (`runPrism`) も、
 // 芯線と厚みと z から実体を起こす規則であり、それは導出の一部である (koyu ADR-0058)。
 // かつてこの頁は両方を書き写しており、同じ `Form` から違う形が出る余地が残っていた。
+//
+// **壁の実体は起こすものですらない。**区間は `footprint` — 両端の取合いが既に決まった
+// 足あと — を持って届く (koyu ADR-0063)。芯線に厚みを振って箱を立てると、取合いは
+// 開いたままになる。かつてここはそうしており、直角に交わる二枚の壁の外側に
+// t/2 × t/2 の隙が残っていた (two-rooms で 4 箇所、complex で 206 箇所)。
+// **芯線は足あとの軸ではない**ので、足あとは芯線からは戻らない。
 import * as THREE from "three";
 import { bandLine, runPrism, type Form, type FormPanel, type RunSolid, type Slab } from "@kensnzk/koyu/form";
 import type { Pt } from "@kensnzk/koyu/model";
@@ -321,14 +327,12 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
     const isGlass = opts.glass ?? (() => false);
 
     // 壁 — **開口で割られた区間として立つ。**窓の裏に壁の箱が残ると、
-    // ガラスをいくら透かしても中は見えない。割るのは Form であり、ここではない
+    // ガラスをいくら透かしても中は見えない。割るのは Form であり、ここではない。
+    // 取合いを閉じるのも Form である — ここには直すべき隅が無い (koyu ADR-0063)
     for (const b of form.boundaries) {
       if (!b.material || levelHidden(b.level)) continue;
       const mat = b.air ? railMat : isGlass(b) ? glassWallMat : wallMat;
-      for (const p of b.material.panels) {
-        const m = panelMesh(p, b.material.t, mat);
-        if (m) group.add(m);
-      }
+      for (const p of b.material.panels) group.add(panelMesh(p, mat));
     }
 
     // 建具 (扉・ガラス) — 開口の z 範囲も幅も Form が持つ。
@@ -355,9 +359,14 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
   return { group, pickables };
 }
 
-/** 壁の一区間を立体へ。芯線に対して厚み t を両側へ振り分ける */
-function panelMesh(p: FormPanel, t: number, mat: THREE.Material): THREE.Mesh | null {
-  return segBox(p, p.z0, p.z1, t, mat);
+/**
+ * 壁の一区間を立体へ。**`Form` が持つ足あとをそのまま押し出す** (koyu ADR-0063)。
+ *
+ * 厚みを受け取らないのは、受け取っても使い道が無いからである。取合いの決まった壁の実体は
+ * 芯線と厚みの関数ではない — 勝った壁は節点を越えて伸び、負けた壁はその面で切られる。
+ */
+function panelMesh(p: FormPanel, mat: THREE.Material): THREE.Mesh {
+  return prismMesh(p.footprint, p.z0, p.z1, mat);
 }
 
 /**

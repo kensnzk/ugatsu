@@ -176,18 +176,25 @@ describe("ショーケース (tower — 9レイヤー合成 + polygon敷地)", (
       showOpenings: false,
       hiddenLevels: {},
     });
-    // L5 (z=14000, 階高3000) の壁ボックスを拾う: 中心高さ = 14000 + 3000/2
-    const boxes = built.group.children.filter(
-      (o): o is import("three").Mesh =>
-        (o as import("three").Mesh).isMesh === true &&
-        ((o as import("three").Mesh).geometry as { type?: string }).type === "BoxGeometry" &&
-        !(o as import("three").Mesh).userData.path,
-    );
-    const l5walls = boxes.filter((b) => Math.abs(b.position.y - (14000 + 1500)) < 1);
-    expect(l5walls.length).toBeGreaterThan(0);
+    // **壁は箱ではなく足あとの押し出しである** (koyu ADR-0063)。拾うのは
+    // ExtrudeGeometry の下端 (position.y = z0) と伸ばした高さ (depth) — 空間の気積は
+    // userData.path を持ち、床と天井は L5 のFLからは始まらないので、この二つで壁だけが残る
+    const l5 = built.group.children
+      .filter(
+        (o): o is import("three").Mesh =>
+          (o as import("three").Mesh).isMesh === true &&
+          ((o as import("three").Mesh).geometry as { type?: string }).type === "ExtrudeGeometry" &&
+          !(o as import("three").Mesh).userData.path,
+      )
+      .map((mesh) => ({
+        z0: mesh.position.y,
+        h: (mesh.geometry as import("three").ExtrudeGeometry).parameters.options.depth as number,
+      }))
+      .filter((p) => Math.abs(p.z0 - 14000) < 1);
+    // L5 (z=14000) の階高は3000。天井高で止まっていれば、ここに 3000 の壁は無い
+    expect(l5.filter((p) => Math.abs(p.h - 3000) < 1).length).toBeGreaterThan(0);
     // 手すり (air:1 h:1200) は自身の高さのまま
-    const rails = boxes.filter((b) => Math.abs(b.position.y - (14000 + 600)) < 1);
-    expect(rails.length).toBeGreaterThan(0);
+    expect(l5.filter((p) => Math.abs(p.h - 1200) < 1).length).toBeGreaterThan(0);
   });
 });
 
