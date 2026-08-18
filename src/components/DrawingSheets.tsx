@@ -155,7 +155,7 @@ export function DrawingSheets() {
         </div>
       </div>
       <div className="drawing-scroll">
-        {sheets.map((s) => (
+        {sheets.map((s, i) => (
           <figure key={s.id} className="sheet">
             {/* 紙は A3 固定。koyu の SVG は既に「紙 mm × 4px」で出ているので、
                 A3 の px 幅に対する比でそのまま置けば、頁上の実寸になる */}
@@ -166,12 +166,19 @@ export function DrawingSheets() {
                 dangerouslySetInnerHTML={{ __html: s.svg }}
               />
               {/* 表題欄 — **縮尺は紙に載っていなければならない。**刷った図が縮尺を
-                  言えないなら寸法は読めず、図面ではなくなる。位置は頁に固定で、
-                  koyu の縁 (21mm) に合わせて置く */}
+                  言えないなら寸法は読めず、図面ではなくなる。
+                  枠は引かない。枠線を持たない表題欄は現代の実務でも通る書式であり、
+                  情報が読めることが原則で、箱はその手段の一つにすぎない。
+                  位置は頁に固定 — 右下、koyu の縁 (21mm) に合わせる */}
               <div className="sheet-titleblock">
                 <span className="tb-name">{modelName}</span>
-                <span className="tb-title">{s.title}</span>
-                <span className="tb-scale">S = 1 / {s.denom}</span>
+                <span className="tb-line">
+                  <span className="tb-title">{s.title}</span>
+                  <span className="tb-scale">S=1/{s.denom}</span>
+                  <span className="tb-no">
+                    {String(i + 1).padStart(2, "0")}/{String(sheets.length).padStart(2, "0")}
+                  </span>
+                </span>
               </div>
             </div>
             <figcaption className="sheet-caption">

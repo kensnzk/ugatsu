@@ -707,8 +707,9 @@ input:focus-visible {
   height: auto;
 }
 
-/* 表題欄 — 頁に固定。寸法は紙 (420mm) に対する比で書くので、画面でも印刷でも同じ所に来る。
-   21mm = koyu の縁と同じ幅 → 5% (横) / 7.07% (縦) */
+/* 表題欄 — 頁の右下に固定。**枠は引かない。**
+   罫線は上の一本だけで、あとは文字の大小と濃さで読ませる。寸法は紙 (420mm) に対する比で
+   書いてあるので、画面でも印刷でも同じ所に同じ大きさで来る */
 .sheet-titleblock {
   position: absolute;
   right: 5%;
@@ -716,27 +717,35 @@ input:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
-  gap: 0.35cqw;
-  padding: 1cqw 1.2cqw;
-  border: 0.1cqw solid #1f1f1f;
-  background: #faf8f4;
+  gap: 0.3cqw;
+  padding-top: 0.34cqw;
+  border-top: 0.06cqw solid #1f1f1f;
   color: #1f1f1f;
-  font-size: 1.3cqw;
-  line-height: 1.25;
-  text-align: right;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .tb-name {
-  font-size: 1.55cqw;
+  font-size: 0.72cqw;
+  letter-spacing: 0.01em;
 }
 
-.tb-title {
-  opacity: 0.8;
+.tb-line {
+  display: flex;
+  align-items: baseline;
+  gap: 1.1cqw;
+  font-size: 0.52cqw;
+  color: #6f675b;
 }
 
-.tb-scale {
+.tb-scale,
+.tb-no {
   font-variant-numeric: tabular-nums;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
+}
+
+.tb-no {
+  color: #8a8171;
 }
 
 .sheet-caption {
