@@ -677,17 +677,66 @@ input:focus-visible {
   width: min(100%, 1100px);
 }
 
-/* 紙。SVG は viewBox を持つので、幅を紙に合わせれば高さは追従する */
+/* 紙 — A3 横で固定。**紙が図に合わせるのではなく、図が紙に合わせる。**
+   koyu の SVG は既に A3 相当の px (4 px/mm) で出ているので、中で中央に置くだけでよい */
 .sheet-paper {
+  position: relative;
+  container-type: size;
+  aspect-ratio: 420 / 297;
+  display: flex;
+  /* **左上に寄せる。**koyu のマークは自分の紙の左上に立つので、中央寄せにすると
+     図の大きさによってマークの位置が動く。頁の隅に寄せておけば、どの図でも同じ所に来る —
+     図面枠が本来やることを、枠を持たないうちは配置で代える */
+  align-items: flex-start;
+  justify-content: flex-start;
+  overflow: hidden;
   background: #faf8f4;
   border: 1px solid var(--border-subtle);
   box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
 }
 
-.sheet-paper svg {
+.sheet-ink {
+  /* 幅は A3 に対する実寸比で入る。高さは viewBox が決める */
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.sheet-ink svg {
   display: block;
   width: 100%;
   height: auto;
+}
+
+/* 表題欄 — 頁に固定。寸法は紙 (420mm) に対する比で書くので、画面でも印刷でも同じ所に来る。
+   21mm = koyu の縁と同じ幅 → 5% (横) / 7.07% (縦) */
+.sheet-titleblock {
+  position: absolute;
+  right: 5%;
+  bottom: 7.07%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35cqw;
+  padding: 1cqw 1.2cqw;
+  border: 0.1cqw solid #1f1f1f;
+  background: #faf8f4;
+  color: #1f1f1f;
+  font-size: 1.3cqw;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.tb-name {
+  font-size: 1.55cqw;
+}
+
+.tb-title {
+  opacity: 0.8;
+}
+
+.tb-scale {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }
 
 .sheet-caption {
