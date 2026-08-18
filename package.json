@@ -2,7 +2,7 @@
   "name": "ugatsu",
   "version": "0.7.0",
   "private": true,
-  "description": "2D/3D viewer for koyu — plans, stacked levels, volumes and area schedules generated from space-first text",
+  "description": "2D/3D viewer for koyu \u2014 plans, stacked levels, volumes and area schedules generated from space-first text",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -22,7 +22,7 @@
     "@codemirror/language": "^6.10.0",
     "@codemirror/state": "^6.5.0",
     "@codemirror/view": "^6.35.0",
-    "@kensnzk/koyu": "^0.22.0",
+    "@kensnzk/koyu": "^0.24.0",
     "@kensnzk/koyu-design-system": "^0.3.0",
     "codemirror": "^6.0.1",
     "react": "^18.3.1",

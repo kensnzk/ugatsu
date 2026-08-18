@@ -20,7 +20,7 @@ import { derive, type Form } from "@kensnzk/koyu/form";
 import type { Model, Pt } from "@kensnzk/koyu/model";
 import { buildColors } from "../src/lib/colors.js";
 import { formOf } from "../src/lib/form.js";
-import { planFigure, type MarkRole } from "../src/lib/planFigure.js";
+import { planMarks, type Mark, type MarkRole } from "@kensnzk/koyu/draw";
 import { buildScene } from "../src/three/buildScene.js";
 
 const layered = (dir: string, entry = "main.muro"): Model =>
@@ -77,7 +77,6 @@ const SHAPE_PARTS = [
 const DRAWING_PAGES = [
   "src/components/PlanView.tsx",
   "src/three/buildScene.ts",
-  "src/lib/planFigure.ts",
 ];
 
 /**
@@ -117,7 +116,6 @@ describe("形の出所は一つである (koyu ADR-0040)", () => {
   // koyu ADR-0058 — 構成子を書き写せば、同じ Form から違う形が出る余地がまた開く。
   // 実際に開いていた: 平面は `band` を、立体は `bandLine` と `runPrism` を書き写していた
   const CONSTRUCTOR_USERS: Record<string, string[]> = {
-    "src/lib/planFigure.ts": ["band"],
     "src/three/buildScene.ts": ["bandLine", "runPrism"],
   };
   for (const [page, names] of Object.entries(CONSTRUCTOR_USERS)) {
@@ -480,7 +478,9 @@ function expectedMarks(form: Form, level: string): Record<string, number> {
       if (spaces.get(e.ref)?.void) {
         bump("space-void");
         bump("void-hatch");
-      } else bump("space");
+      } else if (spaces.get(e.ref)?.semiOutdoor) bump("space-semi-outdoor");
+      // 半屋外は**役**であって塗りの薄さではない (koyu 0.24) — 淡さの意味は消費者ごとに違う
+      else bump("space");
     } else if (e.of === "space" && e.class === "above" && e.polygon) bump("void-above");
     // **物があるかどうかを言うのは `polygon` の有無である。**区間は足あとと芯線の両方を
     // 持って届くので (koyu ADR-0058)、`lines` の有無で分けるとすべての壁が「物を持たない
@@ -520,7 +520,7 @@ function expectedMarks(form: Form, level: string): Record<string, number> {
 
 function actualMarks(form: Form, level: string): Record<string, number> {
   const out: Record<string, number> = {};
-  for (const k of planFigure(form, level)) out[k.role] = (out[k.role] ?? 0) + 1;
+  for (const k of planMarks(form, level)) out[k.role] = (out[k.role] ?? 0) + 1;
   return out;
 }
 
@@ -551,7 +551,7 @@ describe("平面は Form の 2Dエンティティを取りこぼさない", () =
           if (!plan) continue;
           const bs = plan.entities.filter((e) => e.of === "boundary");
           const n = (f: (e: (typeof bs)[number]) => boolean) => bs.filter(f).length;
-          const marks = planFigure(form, l.name);
+          const marks: Mark[] = planMarks(form, l.name);
           const role = (r: MarkRole) => marks.filter((k) => k.role === r).length;
 
           // **破線になるのは材を持たない境界だけ。**足あとを持つエンティティが一つでも
@@ -572,7 +572,7 @@ describe("平面は Form の 2Dエンティティを取りこぼさない", () =
   it("印は必ず Form の対象の同一性を持つ (どの空間・境界・開口の線かが言える)", () => {
     const form = formOf(layered("complex"));
     for (const l of form.levels) {
-      for (const k of planFigure(form, l.name)) expect(k.ref).not.toBe("");
+      for (const k of planMarks(form, l.name)) expect(k.ref).not.toBe("");
     }
   });
 });
@@ -596,7 +596,7 @@ describe("上部吹抜けの投影が平面に落ちる", () => {
       const form = formOf(CASES[name]!());
       const drawn = new Set<string>();
       for (const l of form.levels) {
-        for (const k of planFigure(form, l.name)) {
+        for (const k of planMarks(form, l.name)) {
           if (k.role === "void-above") drawn.add(`${l.name}:${k.ref}`);
         }
       }
@@ -609,7 +609,7 @@ describe("上部吹抜けの投影が平面に落ちる", () => {
       const form = formOf(CASES[name]!());
       const drawn = new Set<string>();
       for (const l of form.levels) {
-        for (const k of planFigure(form, l.name)) {
+        for (const k of planMarks(form, l.name)) {
           if (k.role === "void-above") drawn.add(`${l.name}:${k.ref}`);
         }
       }
@@ -645,7 +645,7 @@ describe("斜め線分の上の開口も形になる", () => {
     expect(panels.length).toBe(3);
     expect(panels[1]!.z0).toBe(o.z1); // 扉の上の垂れ壁
     // 平面にも立体にも、Form の形がそのまま出る
-    const marks = planFigure(form, "L1").map((k) => k.role);
+    const marks = planMarks(form, "L1").map((k: Mark) => k.role);
     expect(marks).toContain("door-leaf");
     expect(marks).toContain("door-arc");
     expect(actualBoxes(build(m).group)).toEqual(expectedBoxes(form));

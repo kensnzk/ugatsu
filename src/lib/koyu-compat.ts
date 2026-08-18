@@ -21,7 +21,7 @@
 // consumers never index `model.boundaries[i]`")。文書と実装が食い違っている側であり、
 // 出し直されたらこの頁の当該部分は消す。
 import { runAnalysis } from "@kensnzk/koyu/analysis";
-import type { Boundary, Model, Pt } from "@kensnzk/koyu/model";
+import type { Model, Pt } from "@kensnzk/koyu/model";
 import { createAssessmentRegistry } from "@kensnzk/koyu/validate";
 import {
   SCHEMATIC_ANALYSES,
@@ -57,101 +57,6 @@ export function polygonAreaM2(pts: Pt[]): number {
     a += pts[j]!.x * pts[i]!.y - pts[i]!.x * pts[j]!.y;
   }
   return Math.abs(a / 2) / 1e6;
-}
-
-/** 勾配を図面の綴りへ — `1/8`。**これは注記の言葉であって形ではない** (docs/scope.md §5.3) */
-export function slopeText(slope: number): string {
-  if (slope <= 0) return "—";
-  return `1/${(1 / slope).toFixed(1).replace(/\.0$/, "")}`;
-}
-
-/* ------------------------------------------------------------------ */
-/* 境界の正準順 (koyu ADR-0041)                                        */
-/* ------------------------------------------------------------------ */
-//
-// 宣言順は正準JSONが捨てる情報なので、境界を順に読む導出はこの並びを使う —
-// `FormBoundary.boundary` / `FormSeg.boundary` の索引はここへの添字である。
-// `model.boundaries[i]` (宣言順) を当てると、静かに別の境界の属性を読む。
-
-/** UTF-16 コード単位を符号位置 (= UTF-8 バイト) の順へ写す */
-function utf8Order(u: number): number {
-  if (u >= 0xd800 && u <= 0xdfff) return u + 0x2000;
-  if (u >= 0xe000) return u - 0x800;
-  return u;
-}
-
-/** 正準の照合順。**JavaScript の `<` と既定の `sort` はここでは使えない** (koyu ADR-0043) */
-export function compareCanonical(a: string, b: string): number {
-  if (a === b) return 0;
-  const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) {
-    const x = a.charCodeAt(i);
-    const y = b.charCodeAt(i);
-    if (x !== y) return utf8Order(x) < utf8Order(y) ? -1 : 1;
-  }
-  return a.length === b.length ? 0 : a.length < b.length ? -1 : 1;
-}
-
-// `sortObj` が `Map` を返すのは意図である — `JSON.stringify(new Map())` は `{}` なので、
-// 並べ替えの鍵に属性は効かない。koyu の挙動であり、移植は直さずに同じでなければならない
-const sortObj = <T,>(o: Record<string, T>): Map<string, T> =>
-  new Map(Object.entries(o).sort(([a], [b]) => compareCanonical(a, b)));
-
-function sortBySerial<T>(items: T[]): T[] {
-  return items
-    .map((it) => [JSON.stringify(it), it] as const)
-    .sort(([x], [y]) => compareCanonical(x, y))
-    .map(([, it]) => it);
-}
-
-type Drawn = Boundary["drawn"];
-
-const canonicalLineEnds = (d: NonNullable<Drawn>): [string, string] =>
-  d.a.x < d.b.x || (d.a.x === d.b.x && d.a.y <= d.b.y) ? [d.aRef, d.bRef] : [d.bRef, d.aRef];
-
-const canonicalOpeningEntry = (o: Boundary["openings"][number]): Record<string, unknown> => ({
-  kind: o.kind,
-  ...(o.ref ? { ref: o.ref } : {}),
-  w: o.w,
-  ...(o.h !== undefined ? { h: o.h } : {}),
-  at: o.atRef ?? o.at,
-  ...(o.edge ? { edge: o.edge } : {}),
-  ...(o.hinge ? { hinge: o.hinge } : {}),
-  ...(o.swing ? { swing: o.swing } : {}),
-  ...(Object.keys(o.attrs).length ? { attrs: sortObj(o.attrs) } : {}),
-});
-
-const canonicalSegEntry = (g: Boundary["segs"][number]): Record<string, unknown> => ({
-  w: g.w,
-  at: g.atRef ?? g.at,
-  ...(g.edge ? { edge: g.edge } : {}),
-  ...(Object.keys(g.attrs).length ? { attrs: sortObj(g.attrs) } : {}),
-});
-
-const canonicalBoundaryEntry = (b: Boundary): Record<string, unknown> => ({
-  between: [b.a, b.b].sort(compareCanonical),
-  a: b.a,
-  kind: b.kind,
-  ...(b.t !== undefined ? { t: b.t } : {}),
-  ...(b.air ? { air: true } : {}),
-  ...(b.edge ? { edge: b.edge } : {}),
-  ...(b.drawn ? { line: canonicalLineEnds(b.drawn) } : {}),
-  ...(Object.keys(b.attrs).length ? { attrs: sortObj(b.attrs) } : {}),
-  ...(b.openings.length ? { openings: sortBySerial(b.openings.map(canonicalOpeningEntry)) } : {}),
-  ...(b.segs.length ? { segs: sortBySerial(b.segs.map(canonicalSegEntry)) } : {}),
-});
-
-/**
- * 境界を koyu が導出するときの順に並べる。
- *
- * **`O(n log n)` の並べ替えを毎回走らせる。**`Form` の索引を引き続ける側は一度だけ呼んで
- * 持つこと (koyu ADR-0041 が名指しで言う) — `src/lib/written.ts` がそうしている。
- */
-export function canonicalBoundaryOrder(model: Model): Boundary[] {
-  return [...model.boundaries]
-    .map((b, i) => ({ b, key: JSON.stringify(canonicalBoundaryEntry(b)), i }))
-    .sort((p, q) => compareCanonical(p.key, q.key) || p.i - q.i)
-    .map((x) => x.b);
 }
 
 /* ------------------------------------------------------------------ */

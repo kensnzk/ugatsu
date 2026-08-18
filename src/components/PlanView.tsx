@@ -11,9 +11,10 @@ import { buildColors, routeColor, selectColor } from "../lib/colors.js";
 import { Radio } from "../lib/ds.js";
 import { formOf } from "../lib/form.js";
 import { polyBounds, polygonAreaM2 } from "../lib/koyu-compat.js";
-import { planFigure, type Mark, type MarkRole } from "../lib/planFigure.js";
+import { planMarks, type Mark, type MarkRole } from "@kensnzk/koyu/draw";
+import { planWords } from "../lib/planWords.js";
 import { token } from "../lib/theme.js";
-import { writtenOf } from "../lib/written.js";
+import { writtenOf } from "@kensnzk/koyu/draw";
 import { levelsWithRooms, routePaths, useViewer } from "../state/store.js";
 import { Dropdown } from "./Dropdown.js";
 import { Legend } from "./Legend.js";
@@ -70,7 +71,7 @@ export function PlanView() {
 
   /** そのレベルに引く印。Form の 2Dエンティティを写しただけのもの */
   const marks = useMemo(
-    () => (form && planLevel ? planFigure(form, planLevel) : []),
+    () => (form && planLevel ? planMarks(form, planLevel) : []),
     [form, planLevel],
   );
   const byRole = useMemo(() => {
@@ -158,7 +159,8 @@ export function PlanView() {
   // ---- 空間の面 (Form の class:cut / of:space) ----
   const roomFills: ReactNode[] = [];
   const selectionMarks: ReactNode[] = []; // 壁より上の層に描く
-  for (const [i, k] of of("space").entries()) {
+  for (const [i, k] of [...of("space"), ...of("space-semi-outdoor")].entries()) {
+    const faint = k.role === "space-semi-outdoor";
     const isSel = k.ref === selected;
     roomFills.push(
       <path
@@ -166,7 +168,7 @@ export function PlanView() {
         d={d2(k.polygon!)}
         fill={isSel ? token("--selection-bg") : colors.byPath(k.ref)}
         fillOpacity={
-          isSel ? 1 : k.ref === hovered ? (k.faint ? 0.4 : 0.62) : k.faint ? 0.18 : 0.42
+          isSel ? 1 : k.ref === hovered ? (faint ? 0.4 : 0.62) : faint ? 0.18 : 0.42
         }
         style={{ cursor: "pointer" }}
         onPointerUp={() => {
@@ -201,7 +203,7 @@ export function PlanView() {
   }
   // 選択・経路の輪郭 (導出された凸片ごとに)
   for (const [i, k] of marks.entries()) {
-    if (k.role !== "space" && k.role !== "space-void") continue;
+    if (k.role !== "space" && k.role !== "space-semi-outdoor" && k.role !== "space-void") continue;
     const isSel = k.ref === selected;
     if (!isSel && !onRoute.has(k.ref)) continue;
     selectionMarks.push(
@@ -436,7 +438,7 @@ export function PlanView() {
         />
         {k.at && (
           <text x={sx(k.at.x) + 90} y={sy(k.at.y) + 90} fontSize={220} fill={DRAWING} stroke="none">
-            {k.text}
+            {planWords(k)}
           </text>
         )}
       </g>,
@@ -446,7 +448,7 @@ export function PlanView() {
     if (!k.at) continue;
     runMarks.push(
       <text key={`rn${i}`} x={sx(k.at.x)} y={sy(k.at.y) + 700} fontSize={200} fill={FAINT} textAnchor="middle" pointerEvents="none">
-        {k.text}
+        {planWords(k)}
       </text>,
     );
   }
@@ -459,7 +461,7 @@ export function PlanView() {
         <path d={d2(k.polygon!)} fill="none" stroke={FAINT} strokeWidth={20} strokeDasharray="160 100" />
         {k.at && (
           <text x={sx(k.at.x)} y={sy(k.at.y) + 800} textAnchor="middle" fontSize={200} fill={FAINT}>
-            {k.text}
+            {planWords(k)}
           </text>
         )}
       </g>,
