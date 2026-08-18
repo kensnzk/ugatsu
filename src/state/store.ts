@@ -11,7 +11,7 @@ import type { Model } from "@kensnzk/koyu/model";
 import { attrKeyOf, carriedKeys, type ColorMode } from "../lib/colors.js";
 import { applyTheme, initialTheme, type Theme } from "../lib/theme.js";
 
-export type MainView = "plan" | "3d" | "table";
+export type MainView = "plan" | "3d" | "sheet" | "table";
 
 /** 領域を持つ空間があるレベルを z 順で返す */
 export function levelsWithRooms(model: Model): string[] {

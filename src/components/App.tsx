@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Tabs } from "../lib/ds.js";
 import { useViewer, type MainView } from "../state/store.js";
 import { AreaTable } from "./AreaTable.js";
+import { DrawingSheets } from "./DrawingSheets.js";
 import { EditorPane } from "./EditorPane.js";
 import { Inspector } from "./Inspector.js";
 import { PlanView } from "./PlanView.js";
@@ -12,6 +13,7 @@ import { ToolIcon } from "./ui.js";
 const VIEW_ITEMS: Array<{ value: MainView; label: string; icon: string }> = [
   { value: "plan", label: "平面", icon: "grid" },
   { value: "3d", label: "3D", icon: "cube" },
+  { value: "sheet", label: "図面", icon: "file-text" },
   { value: "table", label: "面積表", icon: "table" },
 ];
 
@@ -100,6 +102,7 @@ export function App() {
           <div className="view-slot-3d" style={{ display: mainView === "3d" ? "block" : "none" }}>
             <Scene3D />
           </div>
+          {mainView === "sheet" && <DrawingSheets />}
           {mainView === "table" && <AreaTable />}
         </main>
         {/* ビュー切替 — キャンバス上のセグメント */}
