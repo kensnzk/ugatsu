@@ -633,3 +633,133 @@ input:focus-visible {
   color: var(--text-3);
   font-weight: var(--weight-regular);
 }
+
+/* ---- 図面 — 紙に出す前提の面 ------------------------------------------------
+   画面の平面と違い、ここは触れない。koyu が出した SVG をそのまま貼り、一枚を一頁として
+   印刷にかける。版面は作らない — PDF にするのはブラウザの印刷である              */
+
+.drawing-sheets {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--wash-2);
+}
+
+.drawing-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-1);
+}
+
+.drawing-count {
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.drawing-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.sheet {
+  margin: 0;
+  width: min(100%, 1100px);
+}
+
+/* 紙。SVG は viewBox を持つので、幅を紙に合わせれば高さは追従する */
+.sheet-paper {
+  background: #faf8f4;
+  border: 1px solid var(--border-subtle);
+  box-shadow: 0 2px 12px rgb(0 0 0 / 12%);
+}
+
+.sheet-paper svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.sheet-caption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-muted);
+}
+
+.sheet-download {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sheet-download:hover {
+  color: var(--text-default);
+}
+
+/* 印刷 — 図だけを残し、一枚を一頁にする。画面の道具立ては一つも紙に出さない */
+@media print {
+  @page {
+    margin: 12mm;
+  }
+
+  body {
+    background: #fff;
+  }
+
+  .toolbar,
+  .view-switch,
+  .side,
+  .drawing-bar {
+    display: none !important;
+  }
+
+  .app,
+  .body,
+  .main,
+  .drawing-sheets,
+  .drawing-scroll {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  .sheet {
+    width: 100%;
+    break-inside: avoid;
+    break-after: page;
+  }
+
+  .sheet:last-child {
+    break-after: auto;
+  }
+
+  /* 紙の上に紙の影は要らない */
+  .sheet-paper {
+    border: 0;
+    box-shadow: none;
+  }
+
+  .sheet-download {
+    display: none;
+  }
+}
