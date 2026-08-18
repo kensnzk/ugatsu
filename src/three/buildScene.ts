@@ -167,10 +167,6 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
     (level !== undefined ? holders.get(level) : undefined) ?? loose;
   const levelHidden = (level: string | undefined): boolean => !!(level && hiddenLevels[level]);
 
-  // 面 (床・天井・屋根) の節はレベルを持たない (koyu 0.24 の Scene)。面はその空間の階に
-  // 架かるので、空間のパスから引く — 形ではなく、書かれた所属を引き直しているだけである
-  const levelOfSpace = new Map(form.spaces.map((s) => [s.path, s.level]));
-
   const wallMat = new THREE.MeshLambertMaterial({ color: INK() });
   const doorMat = new THREE.MeshLambertMaterial({ color: DOOR() });
   const glassMat = new THREE.MeshLambertMaterial({ color: GLASS(), transparent: true, opacity: 0.3 });
@@ -312,13 +308,12 @@ export function buildScene(form: Form, opts: SceneOptions): BuiltScene {
       // 面の要素 (koyu ADR-0024): 床・天井・屋根
       case "slab": {
         if (stackMode || opts.showFabric === false || !node.solid) continue;
-        const level = levelOfSpace.get(node.ref);
-        if (levelHidden(level)) continue;
+        if (levelHidden(node.level)) continue;
         // **知らない種別を黙って落とさない。**koyu が SlabKind を増やした日、`continue` すると
         // その版だけが立体から消え、何も言わない — この頁が無くそうとしている失敗そのものである。
         // 既定の材で立てておけば、見た目で気づける
         const mat = slabMats[node.kind ?? ""] ?? slabMats["floor"]!;
-        at(level).add(prismMesh(node.solid.ring, node.solid.bottom[0]!, node.solid.top[0]!, mat));
+        at(node.level).add(prismMesh(node.solid.ring, node.solid.bottom[0]!, node.solid.top[0]!, mat));
         break;
       }
 

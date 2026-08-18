@@ -147,7 +147,15 @@ describe("形の出所は一つである (koyu ADR-0040)", () => {
       .split("\n")
       .filter((l) => !l.trimStart().startsWith("//"))
       .join("\n");
-    const walked = ["columns", "runs", "slabs", "site", "boundaries", "openings"].filter((a) =>
+    const walked = [
+      "spaces",
+      "columns",
+      "runs",
+      "slabs",
+      "site",
+      "boundaries",
+      "openings",
+    ].filter((a) =>
       new RegExp(`\\bform\\.${a}\\b`).test(src),
     );
     expect(walked).toEqual([]);
